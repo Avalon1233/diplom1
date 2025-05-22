@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Crypto Analysis{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Анализ криптовалюты</h2>
+
+    <!-- Flash-сообщения -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div>
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Форма анализа -->
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="form-group mb-3">
+            {{ form.symbol.label }}
+            {{ form.symbol(class="form-select") }}
+        </div>
+        <div class="form-group mb-3">
+            {{ form.timeframe.label }}
+            {{ form.timeframe(class="form-select") }}
+        </div>
+        <div class="form-group mb-3">
+            {{ form.analysis_type.label }}
+            {{ form.analysis_type(class="form-select") }}
+        </div>
+        <div class="form-group mt-3">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </form>
+
+    <!-- График -->
+    {% if plot_url %}
+        <div class="mt-4">
+            <h4>График</h4>
+            <img src="data:image/png;base64,{{ plot_url }}" class="img-fluid" alt="Анализ">
+        </div>
+    {% endif %}
+
+    <!-- Результаты анализа -->
+    {% if analysis_results %}
+        <div class="mt-4">
+            <h4>Результаты анализа</h4>
+            {% set price_change = analysis_results.price_change %}
+            <table class="table table-bordered">
+                <tr>
+                    <th>Текущая цена</th>
+                    <td>${{ analysis_results.current_price }}</td>
+                </tr>
+                <tr>
+                    <th>Изменение цены</th>
+                    <td class="{{ 'text-success' if price_change >= 0 else 'text-danger' }}">
+                        ${{ price_change }} ({{ analysis_results.percent_change }}%)
+                    </td>
+                </tr>
+                <tr>
+                    <th>Средний объём</th>
+                    <td>{{ analysis_results.average_volume }}</td>
+                </tr>
+                <tr>
+                    <th>Максимум</th>
+                    <td>${{ analysis_results.high }}</td>
+                </tr>
+                <tr>
+                    <th>Минимум</th>
+                    <td>${{ analysis_results.low }}</td>
+                </tr>
+            </table>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

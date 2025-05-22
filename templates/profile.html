@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+  <!-- Сообщения системы -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="row">
+    <div class="col-lg-8 mx-auto">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h2 class="h4 mb-0">Профиль пользователя</h2>
+        </div>
+
+        <div class="card-body">
+          <!-- Секция редактирования профиля -->
+          <div class="profile-section mb-5">
+            <h3 class="h5 mb-4 text-primary">
+              <i class="bi bi-person-gear me-2"></i>Редактировать профиль
+            </h3>
+            <form method="POST">
+              {{ form.hidden_tag() }}
+
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ form.username(class="form-control", id="username") }}
+                    <label for="username">{{ form.username.label.text }}</label>
+                  </div>
+                  {% for error in form.username.errors %}
+                    <small class="text-danger">{{ error }}</small>
+                  {% endfor %}
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ form.email(class="form-control", id="email") }}
+                    <label for="email">{{ form.email.label.text }}</label>
+                  </div>
+                  {% for error in form.email.errors %}
+                    <small class="text-danger">{{ error }}</small>
+                  {% endfor %}
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ form.full_name(class="form-control", id="full_name") }}
+                    <label for="full_name">{{ form.full_name.label.text }}</label>
+                  </div>
+                </div>
+
+                <div class="col-12 mt-3">
+                  {{ form.submit(class="btn btn-primary px-4") }}
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Секция смены пароля -->
+          <div class="password-section">
+            <h3 class="h5 mb-4 text-primary">
+              <i class="bi bi-shield-lock me-2"></i>Сменить пароль
+            </h3>
+            <form method="POST" action="{{ url_for('change_password') }}">
+              {{ password_form.hidden_tag() }}
+
+              <div class="row g-3">
+                <div class="col-md-12">
+                  <div class="form-floating">
+                    {{ password_form.old_password(class="form-control", id="old_password") }}
+                    <label for="old_password">{{ password_form.old_password.label.text }}</label>
+                  </div>
+                  {% for error in password_form.old_password.errors %}
+                    <small class="text-danger">{{ error }}</small>
+                  {% endfor %}
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ password_form.new_password(class="form-control", id="new_password") }}
+                    <label for="new_password">{{ password_form.new_password.label.text }}</label>
+                  </div>
+                  {% for error in password_form.new_password.errors %}
+                    <small class="text-danger">{{ error }}</small>
+                  {% endfor %}
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ password_form.confirm_password(class="form-control", id="confirm_password") }}
+                    <label for="confirm_password">{{ password_form.confirm_password.label.text }}</label>
+                  </div>
+                </div>
+
+                <div class="col-12 mt-3">
+                  {{ password_form.submit(class="btn btn-danger px-4") }}
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .card {
+    border-radius: 10px;
+    overflow: hidden;
+    border: none;
+  }
+
+  .form-control, .form-select {
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #ced4da;
+  }
+
+  .form-floating label {
+    padding: 0.8rem 1rem;
+    color: #6c757d;
+  }
+
+  .form-floating > .form-control:focus ~ label,
+  .form-floating > .form-control:not(:placeholder-shown) ~ label,
+  .form-floating > .form-select ~ label {
+    transform: scale(0.85) translateY(-0.9rem) translateX(0.15rem);
+  }
+
+  .btn {
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+
+  /* Специальные стили для красной кнопки */
+  .btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+  }
+
+  .btn-danger:hover {
+    background-color: #bb2d3b;
+    border-color: #b02a37;
+  }
+</style>
+{% endblock %}

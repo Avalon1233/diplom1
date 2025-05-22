@@ -1,0 +1,54 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(33, 40, 50, 0.15);
+}
+
+.card-header {
+    font-weight: 500;
+}
+
+.card-header:first-child {
+    border-radius: 0.35rem 0.35rem 0 0;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    border-top: none;
+}
+
+.alert {
+    margin-bottom: 1rem;
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+footer {
+    margin-top: 2rem;
+}
+
+/* Custom colors for crypto changes */
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+/* Analysis chart */
+.img-fluid {
+    max-width: 100%;
+    height: auto;
+}

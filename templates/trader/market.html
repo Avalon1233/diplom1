@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Crypto Market - Trader{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Crypto Market Overview</h2>
+    <div>
+      <span id="lastUpdated" class="text-muted me-2">Last updated: <span id="timestamp">{{ now.strftime('%H:%M:%S') }}</span></span>
+      <i class="bi bi-arrow-clockwise refresh-btn" id="refreshData" title="Refresh data"></i>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <div class="row align-items-center">
+        <div class="col-md-6">
+          <h5 class="mb-0">Market Prices</h5>
+        </div>
+        <div class="col-md-6">
+          <div class="input-group search-box">
+            <input type="text" id="searchInput" class="form-control" placeholder="Search cryptocurrencies...">
+            <button class="btn btn-outline-secondary" type="button" id="searchButton">
+              <i class="bi bi-search"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body table-container">
+      <table class="table table-hover" id="marketTable">
+        <thead class="sticky-header">
+          <tr>
+            <th>Symbol</th>
+            <th>Last Price</th>
+            <th>24h Change</th>
+            <th>24h High</th>
+            <th>24h Low</th>
+            <th>Volume</th>
+          </tr>
+        </thead>
+        <tbody id="marketBody">
+          {% for symbol, ticker in tickers.items() %}
+          <tr data-symbol="{{ symbol }}">
+            <td>{{ symbol }}</td>
+            <td>${{ ticker.get('last') | round(2) if ticker.get('last') else 'N/A' }}</td>
+            <td class="{{ 'text-success' if ticker.get('percentage') and ticker.get('percentage') >= 0 else 'text-danger' }}">
+              {% if ticker.get('percentage') is not none %}
+                {{ ticker['percentage'] | round(2) }}%
+              {% else %}N/A{% endif %}
+            </td>
+            <td>${{ ticker.get('high') | round(2) if ticker.get('high') else 'N/A' }}</td>
+            <td>${{ ticker.get('low') | round(2) if ticker.get('low') else 'N/A' }}</td>
+            <td>{{ ticker.get('baseVolume') | round(2) if ticker.get('baseVolume') else 'N/A' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function fetchMarketData() {
+    try {
+      const response = await fetch('/api/market_data');
+      const data = await response.json();
+      const tbody = document.getElementById('marketBody');
+      tbody.innerHTML = '';
+      for (const [symbol, ticker] of Object.entries(data)) {
+        const change = ticker.percentage;
+        const changeClass = change >= 0 ? 'text-success' : 'text-danger';
+        const row = `
+          <tr>
+            <td>${symbol}</td>
+            <td>$${ticker.last?.toFixed(2) ?? 'N/A'}</td>
+            <td class="${changeClass}">${change?.toFixed(2) ?? 'N/A'}%</td>
+            <td>$${ticker.high?.toFixed(2) ?? 'N/A'}</td>
+            <td>$${ticker.low?.toFixed(2) ?? 'N/A'}</td>
+            <td>${ticker.baseVolume?.toFixed(2) ?? 'N/A'}</td>
+          </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', row);
+      }
+      document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+    } catch (e) {
+      alert('Error fetching updated data.');
+    }
+  }
+
+  document.getElementById('refreshData').addEventListener('click', fetchMarketData);
+
+  document.getElementById('searchButton').addEventListener('click', filterTable);
+  document.getElementById('searchInput').addEventListener('keyup', function(e) {
+    if (e.key === 'Enter') filterTable();
+  });
+
+  function filterTable() {
+    const filter = document.getElementById('searchInput').value.toUpperCase();
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    rows.forEach(row => {
+      const symbol = row.cells[0]?.textContent.toUpperCase();
+      row.style.display = symbol.includes(filter) ? '' : 'none';
+    });
+  }
+
+  setInterval(fetchMarketData, 30000);
+</script>
+{% endblock %}

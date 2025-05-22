@@ -1,0 +1,45 @@
+<!-- admin/dashboard.html -->
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="my-4">Admin Dashboard</h2>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-header">Users</div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ users|length }} Registered Users</h5>
+                    <p class="card-text">Manage system users and permissions</p>
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-light">Manage Users</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-header">System</div>
+                <div class="card-body">
+                    <h5 class="card-title">System Status</h5>
+                    <p class="card-text">All systems operational</p>
+                    <a href="#" class="btn btn-light">View Details</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-header">Activity</div>
+                <div class="card-body">
+                    <h5 class="card-title">Recent Activity</h5>
+                    <p class="card-text">Monitor user activities</p>
+                    <a href="#" class="btn btn-light">View Logs</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

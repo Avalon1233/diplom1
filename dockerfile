@@ -1,5 +1,5 @@
-# Используем официальный Python образ (уточните версию Python 3.13, если он уже доступен)
-FROM python:3.13.3
+# Используем официальный Python образ с версией 3.13.3
+FROM python:3.13.3-slim-bookworm
 
 # Устанавливаем зависимости системы
 RUN apt-get update && apt-get install -y \
@@ -10,31 +10,31 @@ RUN apt-get update && apt-get install -y \
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем файлы проекта
-COPY . .
+# Сначала копируем только requirements.txt для кэширования слоя с зависимостями
+COPY requirements.txt .
 
-# Устанавливаем зависимости Python
+# Устанавливаем зависимости Python (с явным указанием версий для совместимости)
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
-        flask \
-        flask_sqlalchemy \
-        flask_login \
-        flask_wtf \
-        wtforms \
-        email_validator \
-        yfinance \
-        ccxt \
-        matplotlib \
-        torch \
-        scikit-learn \
-        pandas
+    pip install --no-cache-dir -r requirements.txt
+
+# Теперь копируем остальные файлы проекта
+COPY . .
 
 # Устанавливаем переменные окружения
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONFAULTHANDLER=1
+
+# Создаем пользователя для безопасности
+RUN useradd -m flaskuser && \
+    chown -R flaskuser:flaskuser /app && \
+    chmod -R 755 /app
+USER flaskuser
 
 # Открываем порт
 EXPOSE 5000
 
-# Команда запуска
-CMD ["flask", "run"]
+# Команда запуска с gunicorn для production
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "app:app"]

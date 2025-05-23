@@ -638,9 +638,9 @@ def get_crypto_data(symbol):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
+'''
 # Инициализация базы данных
-@app.before_first_request
+#@app.before_first_request
 def create_tables():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
@@ -653,6 +653,7 @@ def create_tables():
         admin.set_password('admin123')
         db.session.add(admin)
         db.session.commit()
+'''
 
 @app.route('/api/market_data')
 @login_required
@@ -662,6 +663,23 @@ def api_market_data():
     crypto_list = [market for market in markets if '/' in market]
     tickers = exchange.fetch_tickers(crypto_list[:50])
     return jsonify(tickers)
+
+@app.route('/trader/chart/<symbol>')
+@login_required
+def trader_chart(symbol):
+    if current_user.role != 'trader':
+        flash('Доступ запрещен', 'danger')
+        return redirect(url_for('home'))
+
+    price = request.args.get('price', type=float)
+    change = request.args.get('change', type=float)
+    high = request.args.get('high', type=float)
+    low = request.args.get('low', type=float)
+    volume = request.args.get('volume', type=float)  # float безопаснее
+
+    return render_template('trader/chart.html', symbol=symbol, price=price, change=change,
+                           high=high, low=low, volume=volume)
+
 
 
 if __name__ == '__main__':

@@ -20,9 +20,8 @@
                         </span>
                         today
                     </p>
-                    <a href="#" class="card-link">View Chart</a>
-                    <a href="#" class="card-link">Trade</a>
-                </div>
+                    <a href="{{ url_for('trader_chart', symbol=crypto.symbol) }}" class="card-link">View Chart</a>
+                    </div>
             </div>
         </div>
         {% endfor %}

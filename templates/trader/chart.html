@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}График: {{ symbol }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>Криптовалюта: {{ symbol }}</h3>
+
+    <div class="row my-3">
+        <div class="col-md-6">
+            <p><strong>Текущая цена:</strong>
+                {% if price is not none %}
+                    ${{ price }}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </p>
+
+            <p><strong>Изменение за 24ч:</strong>
+                {% if change is not none %}
+                    <span class="{{ 'text-success' if change >= 0 else 'text-danger' }}">
+                        {{ change }}%
+                    </span>
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </p>
+
+            <p><strong>Максимум:</strong>
+                {% if high is not none %}
+                    ${{ high }}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </p>
+
+            <p><strong>Минимум:</strong>
+                {% if low is not none %}
+                    ${{ low }}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </p>
+
+            <p><strong>Объем:</strong>
+                {% if volume is not none %}
+                    {{ volume | int }}
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-body">
+            <canvas id="realtimeChart" height="400"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const ctx = document.getElementById('realtimeChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: '{{ symbol }} Цена',
+                data: [],
+                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'Время' } },
+                y: { title: { display: true, text: 'Цена (USD)' } }
+            }
+        }
+    });
+
+    async function updateChart() {
+        const res = await fetch(`/api/realtime_prices?symbol={{ symbol }}`);
+        const data = await res.json();
+        if (data.timestamps && data.prices) {
+            chart.data.labels = data.timestamps;
+            chart.data.datasets[0].data = data.prices;
+            chart.update();
+        }
+    }
+
+    updateChart();
+    setInterval(updateChart, 10000);
+</script>
+{% endblock %}

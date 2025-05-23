@@ -1,44 +1,74 @@
+/* ---------- Base Styles ---------- */
 body {
     background-color: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: #212529;
 }
 
+/* ---------- Navbar ---------- */
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+/* ---------- Cards ---------- */
 .card {
-    box-shadow: 0 0.15rem 1.75rem 0 rgba(33, 40, 50, 0.15);
+    box-shadow: 0 0.15rem 1.75rem rgba(33, 40, 50, 0.15);
+    border: none;
+    border-radius: 0.5rem;
 }
 
 .card-header {
     font-weight: 500;
+    background-color: #fff;
+    border-bottom: 1px solid #dee2e6;
 }
 
 .card-header:first-child {
-    border-radius: 0.35rem 0.35rem 0 0;
+    border-radius: 0.5rem 0.5rem 0 0;
 }
 
+/* ---------- Tables ---------- */
 .table-responsive {
     overflow-x: auto;
 }
 
 .table {
     margin-bottom: 0;
+    border-collapse: collapse;
 }
 
 .table th {
     border-top: none;
+    font-weight: 600;
+    background-color: #f1f3f5;
 }
 
+.table-hover tbody tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* Sticky table header */
+.sticky-header th {
+    position: sticky;
+    top: 0;
+    background-color: #f1f3f5;
+    z-index: 2;
+}
+
+/* ---------- Alerts ---------- */
 .alert {
     margin-bottom: 1rem;
 }
 
-.navbar-brand {
-    font-weight: 600;
-}
-
+/* ---------- Footer ---------- */
 footer {
-    margin-top: 2rem;
+    background-color: #212529;
+    color: #fff;
+    margin-top: auto;
 }
 
-/* Custom colors for crypto changes */
+/* ---------- Custom Text Colors ---------- */
 .text-success {
     color: #28a745 !important;
 }
@@ -47,8 +77,49 @@ footer {
     color: #dc3545 !important;
 }
 
-/* Analysis chart */
+.text-muted {
+    color: #6c757d !important;
+}
+
+/* ---------- Buttons & Icons ---------- */
+.refresh-btn {
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: #6c757d;
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn:hover {
+    transform: rotate(90deg);
+    color: #0d6efd;
+}
+
+/* ---------- Charts ---------- */
 .img-fluid {
     max-width: 100%;
     height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+/* ---------- Search Box ---------- */
+.search-box input {
+    border-right: 0;
+}
+
+.search-box .btn {
+    border-left: 0;
+}
+
+/* ---------- Utility ---------- */
+.text-center {
+    text-align: center !important;
+}
+
+.text-end {
+    text-align: right !important;
+}
+
+.mb-0 {
+    margin-bottom: 0 !important;
 }

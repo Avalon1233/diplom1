@@ -1,39 +1,53 @@
 {% extends "base.html" %}
 
-{% block title %}Analyst Dashboard{% endblock %}
+{% block title %}Аналитическая панель{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2 class="mb-4">Welcome, Analyst!</h2>
+<div class="container mt-5">
+    <h2 class="mb-4 text-center">Добро пожаловать, {{ current_user.full_name }}!</h2>
 
-    <div class="row">
-        <div class="col-md-6 mb-4">
-            <div class="card border-primary">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">Анализ рынка</h5>
-                </div>
+    <div class="row g-4">
+        <!-- Блок: Анализ рынка -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
                 <div class="card-body">
-                    <p class="card-text">Используйте наши передовые инструменты для проведения анализа рынка, включая тенденции, объем, волатильность и прогнозы с использованием нейронных сетей.</p>
-                    <a href="{{ url_for('analyze') }}" class="btn btn-primary">Перейти к анализу</a>
+                    <h5 class="card-title text-primary"><i class="bi bi-bar-chart-line"></i> Анализ рынка</h5>
+                    <p class="card-text">Изучайте цену, тренды, волатильность и прогнозы криптовалют с помощью нейросетей.</p>
+                    <a href="{{ url_for('analyze') }}" class="btn btn-outline-primary">Открыть инструменты анализа</a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6 mb-4">
-            <div class="card border-info">
-                <div class="card-header bg-info text-white">
-                    <h5 class="card-title mb-0">Recent Trends</h5>
-                </div>
+        <!-- Блок: Последние тренды -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0">
                 <div class="card-body">
-                    <p class="card-text">Будьте в курсе последних ценовых тенденций и изменений на рынке. Ознакомьтесь с последними аналитическими данными и графиками.</p>
-                    <a href="{{ url_for('analyze') }}" class="btn btn-info">Изучайте тенденции</a>
+                    <h5 class="card-title text-info"><i class="bi bi-graph-up"></i> Последние тренды</h5>
+                    <p class="card-text">Просмотрите последние изменения на рынке и ключевые тенденции за последние дни.</p>
+                    <a href="{{ url_for('analyze') }}" class="btn btn-outline-info">Перейти к трендам</a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-12">
-            <div class="alert alert-warning" role="alert">
-                Рыночные данные обновляются динамически. Пожалуйста, используйте инструменты анализа для получения наиболее точной информации.
+        <!-- Блок: Обновление данных -->
+        <div class="col-12">
+            <div class="alert alert-warning d-flex align-items-center" role="alert">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                Данные обновляются в режиме реального времени. Используйте инструменты анализа для получения точной информации.
+            </div>
+        </div>
+
+        <!-- Блок: Краткое руководство (опционально) -->
+        <div class="col-12">
+            <div class="card border-light bg-light">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Как использовать:</h6>
+                    <ul>
+                        <li>Выберите криптовалюту и период анализа</li>
+                        <li>Выберите тип анализа: цена, тренд, волатильность, прогноз</li>
+                        <li>Получите визуализацию и ключевые метрики</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>

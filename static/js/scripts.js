@@ -1,29 +1,53 @@
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl)
-    });
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTooltips();
+    setupRealTimePriceUpdates();
+    enableFormValidation();
+});
 
-    // Real-time price updates for trader dashboard
-    if (document.getElementById('traderDashboard')) {
-        setInterval(function() {
-            fetch('/api/crypto/BTC-USD')
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.error) {
-                        document.getElementById('btcPrice').innerText = '$' + data.current_price.toFixed(2);
-                        document.getElementById('btcChange').innerText = data.change.toFixed(2) + '%';
-                        document.getElementById('btcChange').className = data.change >= 0 ? 'text-success' : 'text-danger';
-                    }
-                });
-        }, 5000);
-    }
+/**
+ * Инициализация Bootstrap tooltips
+ */
+function initializeTooltips() {
+    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    [...tooltips].forEach(el => new bootstrap.Tooltip(el));
+}
 
-    // Form validation
+/**
+ * Обновление цены BTC в режиме реального времени на трейдер-дэшборде
+ */
+function setupRealTimePriceUpdates() {
+    const dashboard = document.getElementById('traderDashboard');
+    const priceEl = document.getElementById('btcPrice');
+    const changeEl = document.getElementById('btcChange');
+
+    if (!dashboard || !priceEl || !changeEl) return;
+
+    const updatePrice = async () => {
+        try {
+            const response = await fetch('/api/crypto/BTC-USD');
+            const data = await response.json();
+
+            if (data && !data.error) {
+                priceEl.textContent = `$${data.current_price.toFixed(2)}`;
+                changeEl.textContent = `${data.change.toFixed(2)}%`;
+                changeEl.className = data.change >= 0 ? 'text-success' : 'text-danger';
+            }
+        } catch (err) {
+            console.warn('Ошибка получения цены BTC:', err);
+        }
+    };
+
+    updatePrice();
+    setInterval(updatePrice, 5000);
+}
+
+/**
+ * Включение проверки формы с Bootstrap валидацией
+ */
+function enableFormValidation() {
     const forms = document.querySelectorAll('.needs-validation');
-    Array.prototype.slice.call(forms).forEach(function(form) {
-        form.addEventListener('submit', function(event) {
+    forms.forEach(form => {
+        form.addEventListener('submit', event => {
             if (!form.checkValidity()) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -31,4 +55,4 @@ document.addEventListener('DOMContentLoaded', function() {
             form.classList.add('was-validated');
         }, false);
     });
-});
+}

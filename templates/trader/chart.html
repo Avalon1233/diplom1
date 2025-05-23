@@ -8,9 +8,9 @@
 
     <div class="row my-3">
         <div class="col-md-6">
-            <p><strong>Текущая цена:</strong>
+            <p><strong>Цена:</strong>
                 {% if price is not none %}
-                    ${{ price }}
+                    ${{ price | round(2) }}
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
@@ -19,7 +19,7 @@
             <p><strong>Изменение за 24ч:</strong>
                 {% if change is not none %}
                     <span class="{{ 'text-success' if change >= 0 else 'text-danger' }}">
-                        {{ change }}%
+                        {{ change | round(2) }}%
                     </span>
                 {% else %}
                     <span class="text-muted">—</span>
@@ -28,7 +28,7 @@
 
             <p><strong>Максимум:</strong>
                 {% if high is not none %}
-                    ${{ high }}
+                    ${{ high | round(2) }}
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
@@ -36,7 +36,7 @@
 
             <p><strong>Минимум:</strong>
                 {% if low is not none %}
-                    ${{ low }}
+                    ${{ low | round(2) }}
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
@@ -44,7 +44,7 @@
 
             <p><strong>Объем:</strong>
                 {% if volume is not none %}
-                    {{ volume | int }}
+                    {{ volume | round(2) }}
                 {% else %}
                     <span class="text-muted">—</span>
                 {% endif %}
@@ -81,8 +81,17 @@
             animation: false,
             responsive: true,
             scales: {
-                x: { title: { display: true, text: 'Время' } },
-                y: { title: { display: true, text: 'Цена (USD)' } }
+                x: {
+                    title: { display: true, text: 'Время' }
+                },
+                y: {
+                    title: { display: true, text: 'Цена (USD)' },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                }
             }
         }
     });
@@ -92,7 +101,7 @@
         const data = await res.json();
         if (data.timestamps && data.prices) {
             chart.data.labels = data.timestamps;
-            chart.data.datasets[0].data = data.prices;
+            chart.data.datasets[0].data = data.prices.map(p => parseFloat(p).toFixed(2));
             chart.update();
         }
     }

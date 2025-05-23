@@ -1,3 +1,4 @@
+#app.py
 import os
 from flask import Flask, render_template, url_for, redirect, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -461,81 +462,176 @@ def analyze():
                 plt.legend()
                 plt.grid(True)
 
+
             elif analysis_type == 'neural':
+
                 df = data[['Close']].copy()
+
                 scaler = MinMaxScaler()
+
                 scaled = scaler.fit_transform(df.values)
 
                 sequence_length = 60
-                x_train, y_train = [], []
+
+                x_all, y_all = [], []
 
                 for i in range(sequence_length, len(scaled)):
-                    x_train.append(scaled[i - sequence_length:i])
-                    y_train.append(scaled[i])
+                    x_all.append(scaled[i - sequence_length:i])
 
-                if not x_train:
+                    y_all.append(scaled[i])
+
+                if len(x_all) < 10:
                     flash("Недостаточно данных для обучения модели.", "warning")
+
                     return render_template('analyst/analyze.html', form=form)
 
-                x_train = torch.tensor(np.array(x_train), dtype=torch.float32).reshape(-1, sequence_length, 1)
-                y_train = torch.tensor(np.array(y_train), dtype=torch.float32)
+                x_all = torch.tensor(np.array(x_all), dtype=torch.float32).reshape(-1, sequence_length, 1)
+
+                y_all = torch.tensor(np.array(y_all), dtype=torch.float32)
+
+                # Разделение на train/val
+
+                val_size = int(len(x_all) * 0.2)
+
+                x_train, x_val = x_all[:-val_size], x_all[-val_size:]
+
+                y_train, y_val = y_all[:-val_size], y_all[-val_size:]
 
                 class LSTMModel(nn.Module):
+
                     def __init__(self, input_size=1, hidden_size=50, output_size=1):
                         super().__init__()
+
                         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+
                         self.fc = nn.Linear(hidden_size, output_size)
 
                     def forward(self, x):
                         out, _ = self.lstm(x)
+
                         return self.fc(out[:, -1, :])
 
                 model = LSTMModel()
+
                 loss_fn = nn.MSELoss()
+
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-                model.train()
-                for epoch in range(10):
-                    output = model(x_train)
-                    loss = loss_fn(output.squeeze(), y_train)
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                best_val_loss = float('inf')
+
+                early_stop_count = 0
+
+                model_file = f"model_{symbol.replace('-', '_')}.pt"
+
+                # Если файл модели существует — загрузим
+
+                if os.path.exists(model_file):
+
+                    model.load_state_dict(torch.load(model_file))
+
+                else:
+
+                    # Обучение
+
+                    for epoch in range(50):
+
+                        model.train()
+
+                        output = model(x_train)
+
+                        loss = loss_fn(output.squeeze(), y_train)
+
+                        model.eval()
+
+                        with torch.no_grad():
+
+                            val_output = model(x_val)
+
+                            val_loss = loss_fn(val_output.squeeze(), y_val)
+
+                        if val_loss < best_val_loss:
+
+                            best_val_loss = val_loss
+
+                            early_stop_count = 0
+
+                            torch.save(model.state_dict(), model_file)
+
+                        else:
+
+                            early_stop_count += 1
+
+                            if early_stop_count > 5:
+                                break
+
+                        optimizer.zero_grad()
+
+                        loss.backward()
+
+                        optimizer.step()
+
+                # Прогноз
 
                 last_seq = torch.tensor(scaled[-sequence_length:], dtype=torch.float32).reshape(1, sequence_length, 1)
+
                 model.eval()
+
                 with torch.no_grad():
+
                     pred = model(last_seq).item()
 
                 predicted_price = scaler.inverse_transform([[pred]])[0][0]
 
+                # График
+
                 plt.figure(figsize=(10, 6))
+
                 plt.plot(df.index, df['Close'], label='Историческая цена')
+
                 plt.axhline(y=predicted_price, color='r', linestyle='--',
+
                             label=f'Прогноз: ${round(predicted_price, 2)}')
-                plt.title(f'{symbol} — Прогноз цены (нейросеть PyTorch)')
+
+                plt.title(f'{symbol} — Прогноз цены (LSTM)')
+
                 plt.xlabel('Дата')
+
                 plt.ylabel('Цена (USD)')
+
                 plt.legend()
+
                 plt.grid(True)
 
                 img = BytesIO()
+
                 plt.savefig(img, format='png')
+
                 img.seek(0)
+
                 plot_url = base64.b64encode(img.getvalue()).decode('utf8')
+
                 plt.close()
 
                 current_price = float(df['Close'].iloc[-1])
+
                 price_change = predicted_price - current_price
+
                 percent_change = ((price_change / current_price) * 100) if current_price else 0
 
                 analysis_results = {
+
                     'current_price': round(current_price, 2),
+
                     'price_change': round(price_change, 2),
+
                     'percent_change': round(percent_change, 2),
+
                     'average_volume': int(data['Volume'].mean()),
+
                     'high': round(float(data['High'].max()), 2),
+
                     'low': round(float(data['Low'].min()), 2)
+
                 }
 
             # Отрисовка графика для остальных типов
@@ -671,15 +767,56 @@ def trader_chart(symbol):
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
 
+    # Получаем параметры из URL, если переданы
     price = request.args.get('price', type=float)
     change = request.args.get('change', type=float)
     high = request.args.get('high', type=float)
     low = request.args.get('low', type=float)
-    volume = request.args.get('volume', type=float)  # float безопаснее
+    volume = request.args.get('volume', type=float)
 
-    return render_template('trader/chart.html', symbol=symbol, price=price, change=change,
-                           high=high, low=low, volume=volume)
+    # Если хотя бы один параметр отсутствует — загружаем с yfinance
+    if any(v is None for v in [price, change, high, low, volume]):
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="2d", interval="1d")
 
+            if not data.empty:
+                today = data.iloc[-1]
+                yesterday = data.iloc[-2] if len(data) > 1 else today
+
+                price = today["Close"]
+                high = today["High"]
+                low = today["Low"]
+                volume = today["Volume"]
+                change = ((price - yesterday["Close"]) / yesterday["Close"]) * 100 if yesterday["Close"] else 0.0
+        except Exception as e:
+            flash(f"Не удалось загрузить данные: {e}", "danger")
+
+    return render_template("trader/chart.html",
+                           symbol=symbol,
+                           price=price,
+                           change=change,
+                           high=high,
+                           low=low,
+                           volume=volume)
+
+@app.route('/api/realtime_prices')
+@login_required
+def api_realtime_prices():
+    symbol = request.args.get('symbol', 'BTC-USD')
+
+    try:
+        data = yf.Ticker(symbol).history(period='1d', interval='1m')
+        if data.empty:
+            return jsonify({'timestamps': [], 'prices': []})
+
+        timestamps = data.index.strftime('%H:%M').tolist()
+        prices = [round(p, 2) for p in data['Close'].fillna(method='ffill')]
+
+        return jsonify({'timestamps': timestamps, 'prices': prices})
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'timestamps': [], 'prices': []}), 500
 
 
 if __name__ == '__main__':

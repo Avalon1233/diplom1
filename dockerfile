@@ -1,6 +1,6 @@
-FROM python:3.13.3-slim-bookworm
+FROM python:3.13-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*

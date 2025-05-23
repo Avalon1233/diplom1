@@ -1,5 +1,5 @@
 # Используем официальный Python образ (уточните версию Python 3.13, если он уже доступен)
-FROM python:3.12-slim
+FROM python:3.13.3
 
 # Устанавливаем зависимости системы
 RUN apt-get update && apt-get install -y \

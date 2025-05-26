@@ -29,7 +29,6 @@ RUN useradd -m flaskuser && \
     chown -R flaskuser:flaskuser /app && \
     chmod -R 755 /app
 
-RUN python create_db.py && python init_admin.py
 
 USER flaskuser
 

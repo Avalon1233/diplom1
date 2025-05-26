@@ -619,7 +619,7 @@ def get_crypto_data(symbol):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
+'''
 # Инициализация базы данных
 @app.before_first_request
 def create_tables():
@@ -635,7 +635,7 @@ def create_tables():
         db.session.add(admin)
         db.session.commit()
 
-
+'''
 @app.route('/api/market_data')
 @login_required
 def api_market_data():

@@ -619,9 +619,9 @@ def get_crypto_data(symbol):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-'''
+
 # Инициализация базы данных
-#@app.before_first_request
+@app.before_first_request
 def create_tables():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
@@ -634,7 +634,7 @@ def create_tables():
         admin.set_password('admin123')
         db.session.add(admin)
         db.session.commit()
-'''
+
 
 @app.route('/api/market_data')
 @login_required

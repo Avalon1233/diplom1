@@ -37,11 +37,11 @@
         </div>
     </form>
 
-    <!-- График -->
-    {% if plot_url %}
+    <!-- Интерактивный график Plotly -->
+    {% if plot_div %}
         <div class="mt-4">
             <h4>График</h4>
-            <img src="data:image/png;base64,{{ plot_url }}" class="img-fluid" alt="Анализ">
+            {{ plot_div|safe }}
         </div>
     {% endif %}
 

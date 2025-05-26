@@ -21,6 +21,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+import plotly.graph_objs as go
+import plotly.io as pio
 
 
 
@@ -366,15 +368,12 @@ def analyst_dashboard():
 
     return render_template('analyst/dashboard.html')
 
-
 @app.route('/analyst/analyze', methods=['GET', 'POST'])
 @login_required
 def analyze():
     if current_user.role != 'analyst':
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
-
-
 
     form = AnalysisForm()
     form.symbol.choices = [
@@ -384,283 +383,169 @@ def analyze():
         ('ADA-USD', 'Cardano (ADA)'),
         ('SOL-USD', 'Solana (SOL)')
     ]
-    plot_url = None
+    plot_div = None
     analysis_results = None
+
+    # Для соответствия тикеров yfinance <-> binance
+    symbol_map = {
+        'BTC-USD': 'BTC/USDT',
+        'ETH-USD': 'ETH/USDT',
+        'BNB-USD': 'BNB/USDT',
+        'ADA-USD': 'ADA/USDT',
+        'SOL-USD': 'SOL/USDT'
+    }
+
+    # Подбираем таймфрейм и количество свечей в зависимости от выбранного периода
+    timeframe_map = {
+        '1d':  ('15m', 96),   # 1 день по 15-минутным свечам
+        '1w':  ('1h', 168),   # 1 неделя по часовым свечам
+        '1m':  ('4h', 180),   # 1 месяц по 4-часовым свечам
+        '3m':  ('1d', 90),    # 3 месяца по дневным свечам
+        '1y':  ('1d', 365),   # 1 год по дневным свечам
+    }
 
     if form.validate_on_submit():
         symbol = form.symbol.data.upper()
+        binance_symbol = symbol_map.get(symbol, symbol.replace('-', '/'))
         timeframe = form.timeframe.data
         analysis_type = form.analysis_type.data
 
-        end_date = datetime.now()
-        interval = '1d'
-
-        if timeframe == '1d':
-            start_date = end_date - timedelta(days=1)
-            interval = '5m'
-        elif timeframe == '1w':
-            start_date = end_date - timedelta(weeks=1)
-            interval = '15m'
-        elif timeframe == '1m':
-            start_date = end_date - timedelta(days=30)
-            interval = '1h'
-        elif timeframe == '3m':
-            start_date = end_date - timedelta(days=90)
-            interval = '1d'
-        elif timeframe == '1y':
-            start_date = end_date - timedelta(days=365)
-            interval = '1wk'
+        tf, limit = timeframe_map.get(timeframe, ('1h', 168))
 
         try:
-            data = yf.download(symbol, start=start_date, end=end_date, interval=interval)
-
-            if data.empty:
-                flash('Нет данных для этого символа и периода', 'warning')
+            data = get_binance_ohlcv(binance_symbol, timeframe=tf, limit=limit)
+            if data.empty or len(data) < 5:
+                flash(f'Недостаточно данных для построения графика (получено {len(data)} точек).', 'warning')
                 return render_template('analyst/analyze.html', form=form)
 
+            # --- Price Chart ---
             if analysis_type == 'price':
-                plt.figure(figsize=(10, 6))
-                plt.plot(data.index, data['Close'], label='Close Price')
-                plt.title(f'{symbol} Price Chart')
-                plt.xlabel('Date')
-                plt.ylabel('Price (USD)')
-                plt.legend()
-                plt.grid(True)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
+                fig.update_layout(title=f'{symbol} Price Chart', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-            elif analysis_type == 'volume':
-                plt.figure(figsize=(10, 6))
-                plt.bar(data.index, data['Volume'], label='Volume')
-                plt.title(f'{symbol} Volume Analysis')
-                plt.xlabel('Date')
-                plt.ylabel('Volume')
-                plt.legend()
-                plt.grid(True)
-
+            # --- Trend Analysis ---
             elif analysis_type == 'trend':
-                data['MA_7'] = data['Close'].rolling(window=7).mean()
-                data['MA_30'] = data['Close'].rolling(window=30).mean()
+                data['MA_7'] = data['close'].rolling(window=7).mean()
+                data['MA_30'] = data['close'].rolling(window=30).mean()
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
+                fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_7'], mode='lines', name='7-периодная MA'))
+                fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_30'], mode='lines', name='30-периодная MA'))
+                fig.update_layout(title=f'{symbol} Trend Analysis', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-                plt.figure(figsize=(10, 6))
-                plt.plot(data.index, data['Close'], label='Close Price')
-                plt.plot(data.index, data['MA_7'], label='7-Day MA')
-                plt.plot(data.index, data['MA_30'], label='30-Day MA')
-                plt.title(f'{symbol} Trend Analysis')
-                plt.xlabel('Date')
-                plt.ylabel('Price (USD)')
-                plt.legend()
-                plt.grid(True)
-
+            # --- Volatility Analysis ---
             elif analysis_type == 'volatility':
-                data['Daily_Return'] = data['Close'].pct_change()
-                data['Volatility'] = data['Daily_Return'].rolling(window=7).std() * (365 ** 0.5)
+                data['Return'] = data['close'].pct_change()
+                data['Volatility'] = data['Return'].rolling(window=7).std() * (365 ** 0.5)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=data['datetime'], y=data['Volatility'], mode='lines', name='Волатильность'))
+                fig.update_layout(title=f'{symbol} Volatility Analysis', xaxis_title='Дата', yaxis_title='Волатильность', template='plotly_white')
 
-                plt.figure(figsize=(10, 6))
-                plt.plot(data.index, data['Volatility'], label='Annualized Volatility')
-                plt.title(f'{symbol} Volatility Analysis')
-                plt.xlabel('Date')
-                plt.ylabel('Volatility')
-                plt.legend()
-                plt.grid(True)
-
-
+            # --- Neural Forecast (LSTM) ---
             elif analysis_type == 'neural':
-
-                df = data[['Close']].copy()
-
+                df = data[['close']]
                 scaler = MinMaxScaler()
-
                 scaled = scaler.fit_transform(df.values)
-
                 sequence_length = 60
-
                 x_all, y_all = [], []
-
                 for i in range(sequence_length, len(scaled)):
                     x_all.append(scaled[i - sequence_length:i])
-
                     y_all.append(scaled[i])
-
                 if len(x_all) < 10:
                     flash("Недостаточно данных для обучения модели.", "warning")
-
                     return render_template('analyst/analyze.html', form=form)
-
                 x_all = torch.tensor(np.array(x_all), dtype=torch.float32).reshape(-1, sequence_length, 1)
-
                 y_all = torch.tensor(np.array(y_all), dtype=torch.float32)
 
-                # Разделение на train/val
-
                 val_size = int(len(x_all) * 0.2)
-
                 x_train, x_val = x_all[:-val_size], x_all[-val_size:]
-
                 y_train, y_val = y_all[:-val_size], y_all[-val_size:]
 
                 class LSTMModel(nn.Module):
-
                     def __init__(self, input_size=1, hidden_size=50, output_size=1):
                         super().__init__()
-
                         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
-
                         self.fc = nn.Linear(hidden_size, output_size)
-
                     def forward(self, x):
                         out, _ = self.lstm(x)
-
                         return self.fc(out[:, -1, :])
-
                 model = LSTMModel()
-
                 loss_fn = nn.MSELoss()
-
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
                 best_val_loss = float('inf')
-
                 early_stop_count = 0
-
-                model_file = f"model_{symbol.replace('-', '_')}.pt"
-
-                # Если файл модели существует — загрузим
-
+                model_file = f"model_{symbol.replace('-', '_')}_ccxt.pt"
                 if os.path.exists(model_file):
-
                     model.load_state_dict(torch.load(model_file))
-
                 else:
-
-                    # Обучение
-
                     for epoch in range(50):
-
                         model.train()
-
                         output = model(x_train)
-
                         loss = loss_fn(output.squeeze(), y_train)
-
                         model.eval()
-
                         with torch.no_grad():
-
                             val_output = model(x_val)
-
                             val_loss = loss_fn(val_output.squeeze(), y_val)
-
                         if val_loss < best_val_loss:
-
                             best_val_loss = val_loss
-
                             early_stop_count = 0
-
                             torch.save(model.state_dict(), model_file)
-
                         else:
-
                             early_stop_count += 1
-
                             if early_stop_count > 5:
                                 break
-
                         optimizer.zero_grad()
-
                         loss.backward()
-
                         optimizer.step()
 
-                # Прогноз
-
                 last_seq = torch.tensor(scaled[-sequence_length:], dtype=torch.float32).reshape(1, sequence_length, 1)
-
                 model.eval()
-
                 with torch.no_grad():
-
                     pred = model(last_seq).item()
-
                 predicted_price = scaler.inverse_transform([[pred]])[0][0]
 
-                # График
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=data['datetime'], y=df['close'], mode='lines', name='Историческая цена'))
+                fig.add_hline(y=predicted_price, line_dash="dash",
+                              annotation_text=f"Прогноз: {round(predicted_price,2)}", annotation_position="top left")
+                fig.update_layout(title=f'{symbol} — Прогноз цены (LSTM)', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-                plt.figure(figsize=(10, 6))
-
-                plt.plot(df.index, df['Close'], label='Историческая цена')
-
-                plt.axhline(y=predicted_price, color='r', linestyle='--',
-
-                            label=f'Прогноз: ${round(predicted_price, 2)}')
-
-                plt.title(f'{symbol} — Прогноз цены (LSTM)')
-
-                plt.xlabel('Дата')
-
-                plt.ylabel('Цена (USD)')
-
-                plt.legend()
-
-                plt.grid(True)
-
-                img = BytesIO()
-
-                plt.savefig(img, format='png')
-
-                img.seek(0)
-
-                plot_url = base64.b64encode(img.getvalue()).decode('utf8')
-
-                plt.close()
-
-                current_price = float(df['Close'].iloc[-1])
-
-                price_change = predicted_price - current_price
-
-                percent_change = ((price_change / current_price) * 100) if current_price else 0
-
-                analysis_results = {
-
-                    'current_price': round(current_price, 2),
-
-                    'price_change': round(price_change, 2),
-
-                    'percent_change': round(percent_change, 2),
-
-                    'average_volume': int(data['Volume'].mean()),
-
-                    'high': round(float(data['High'].max()), 2),
-
-                    'low': round(float(data['Low'].min()), 2)
-
-                }
-
-            # Отрисовка графика для остальных типов
+            # Аналитические показатели
             if analysis_type != 'neural':
-                img = BytesIO()
-                plt.savefig(img, format='png')
-                img.seek(0)
-                plot_url = base64.b64encode(img.getvalue()).decode('utf8')
-                plt.close()
-
-                close_start = float(data['Close'].iloc[0])
-                close_end = float(data['Close'].iloc[-1])
+                close_start = float(data['close'].iloc[0])
+                close_end = float(data['close'].iloc[-1])
                 price_change = close_end - close_start
                 percent_change = ((price_change / close_start) * 100) if close_start else 0
-
                 analysis_results = {
                     'current_price': round(close_end, 2),
                     'price_change': round(price_change, 2),
                     'percent_change': round(percent_change, 2),
-                    'average_volume': int(data['Volume'].mean()),
-                    'high': round(float(data['High'].max()), 2),
-                    'low': round(float(data['Low'].min()), 2)
+                    'average_volume': int(data['volume'].mean()),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2)
+                }
+            else:
+                current_price = float(df['close'].iloc[-1])
+                price_change = predicted_price - current_price
+                percent_change = ((price_change / current_price) * 100) if current_price else 0
+                analysis_results = {
+                    'current_price': round(current_price, 2),
+                    'price_change': round(price_change, 2),
+                    'percent_change': round(percent_change, 2),
+                    'average_volume': int(data['volume'].mean()),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2)
                 }
 
-        except Exception as e:
-            flash(f'Ошибка при выборке данных: {str(e)}', 'danger')
+            plot_div = pio.to_html(fig, full_html=False)
 
-    return render_template('analyst/analyze.html', form=form, plot_url=plot_url,
-                           analysis_results=analysis_results)
+        except Exception as e:
+            flash(f'Ошибка при выборке данных с Binance: {str(e)}', 'danger')
+
+    return render_template('analyst/analyze.html', form=form, plot_div=plot_div, analysis_results=analysis_results)
+
+
 # Маршруты профиля
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -817,6 +702,15 @@ def api_realtime_prices():
 
     except Exception as e:
         return jsonify({'error': str(e), 'timestamps': [], 'prices': []}), 500
+
+def get_binance_ohlcv(symbol, timeframe='1h', limit=500):
+    # symbol: 'BTC/USDT', 'ETH/USDT', ...
+    # timeframe: '1m', '5m', '15m', '1h', '4h', '1d', '1w'
+    exchange = ccxt.binance()
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+    return df
 
 
 if __name__ == '__main__':

@@ -76,7 +76,7 @@ class RegistrationForm(FlaskForm):
     confirm_password = PasswordField('Подтвердите пароль',
                                      validators=[DataRequired(), EqualTo('password')])
     role = SelectField('Роль', choices=[('trader', 'Трейдер'), ('analyst', 'Аналитик')])
-    full_name = StringField('Аналитик', validators=[DataRequired()])
+    full_name = StringField('Полное имя', validators=[DataRequired()])
     submit = SubmitField('Зарегистрироваться')
 
 

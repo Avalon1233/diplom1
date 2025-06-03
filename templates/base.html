@@ -23,6 +23,7 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarNav">
+            <!-- левое меню -->
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 {% if current_user.is_authenticated %}
                     {% if current_user.role == 'admin' %}
@@ -38,6 +39,7 @@
                 {% endif %}
             </ul>
 
+            <!-- правое меню -->
             <ul class="navbar-nav">
                 {% if current_user.is_authenticated %}
                     <li class="nav-item">
@@ -52,7 +54,7 @@
                     </li>
                 {% else %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Вход</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}">Регистрация</a></li>
+
                 {% endif %}
             </ul>
         </div>

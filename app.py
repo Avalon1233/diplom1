@@ -704,7 +704,6 @@ def api_realtime_prices():
         return jsonify({'error': str(e), 'timestamps': [], 'prices': []}), 500
 
 def get_binance_ohlcv(symbol, timeframe='1h', limit=500):
-    # symbol: 'BTC/USDT', 'ETH/USDT', ...
     # timeframe: '1m', '5m', '15m', '1h', '4h', '1d', '1w'
     exchange = ccxt.binance()
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)

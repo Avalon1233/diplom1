@@ -1,34 +1,38 @@
-version: '3.9'
+version: '3.8'
 
 services:
   db:
-    image: postgres:16
+    image: postgres:15
+    container_name: my_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: homyak109
+      POSTGRES_DB: database
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U youruser"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
 
   web:
-    build: .
-    command: >
-      bash -c "
-        until pg_isready -h db -p 5432 -U youruser; do sleep 1; done
-        && python create_db.py
-        && python init_admin.py
-        && gunicorn --bind 0.0.0.0:5000 --workers 4 --threads 2 app:app
-      "
-    environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:homyak109@db:5432/database
-      # другие переменные
+    build:
+      context: .
+      dockerfile: Dockerfile        # ваш Dockerfile (копирует app.py, config.py и т.п.)
+    container_name: diplom1_app
+    restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+    environment:
+      # Обращаемся к БД через DNS-имя сервиса "db"
+      DATABASE_URL: "postgresql://postgres:homyak109@db:5432/database"
+      FLASK_ENV: development       # чтобы был включён DEBUG-режим
     ports:
-      - "5000:5000"
+      - "5000:5000"                 # если Flask слушает 0.0.0.0:5000
+    volumes:
+      - ./:/app                     # если хотите монтировать локальный код внутрь контейнера
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge

@@ -1,4 +1,3 @@
-#app.py
 import os
 from flask import Flask, render_template, url_for, redirect, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -8,14 +7,11 @@ from wtforms import StringField, PasswordField, SubmitField, SelectField
 from wtforms.validators import DataRequired, Email, Length, EqualTo
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
-import yfinance as yf
 import ccxt
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
-from datetime import datetime, timedelta
+from datetime import datetime
 from email_validator import validate_email, EmailNotValidError
 import torch
 import torch.nn as nn
@@ -24,15 +20,12 @@ from sklearn.preprocessing import MinMaxScaler
 import plotly.graph_objs as go
 import plotly.io as pio
 
-
-
 app = Flask(__name__)
 app.config.from_object('config.Config')
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
-
 
 # Модели базы данных
 class User(UserMixin, db.Model):
@@ -50,7 +43,6 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-
 class CryptoData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     symbol = db.Column(db.String(20), nullable=False)
@@ -61,13 +53,11 @@ class CryptoData(db.Model):
     close = db.Column(db.Float)
     volume = db.Column(db.Float)
 
-
 # Формы
 class LoginForm(FlaskForm):
     username = StringField('Имя пользователя', validators=[DataRequired()])
     password = PasswordField('Пароль', validators=[DataRequired()])
     submit = SubmitField('Войти')
-
 
 class RegistrationForm(FlaskForm):
     username = StringField('Имя пользователя', validators=[DataRequired(), Length(min=4, max=20)])
@@ -79,14 +69,12 @@ class RegistrationForm(FlaskForm):
     full_name = StringField('Полное имя', validators=[DataRequired()])
     submit = SubmitField('Зарегистрироваться')
 
-
 class UserEditForm(FlaskForm):
     username = StringField('Имя пользователя', validators=[DataRequired(), Length(min=4, max=20)])
     email = StringField('Email', validators=[DataRequired(), Email()])
     role = SelectField('Роль', choices=[('admin', 'Admin'), ('trader', 'Trader'), ('analyst', 'Analyst')])
     full_name = StringField('Полное имя', validators=[DataRequired()])
     submit = SubmitField('Обновить профиль')
-
 
 class PasswordChangeForm(FlaskForm):
     old_password = PasswordField('Старый пароль', validators=[DataRequired()])
@@ -95,10 +83,8 @@ class PasswordChangeForm(FlaskForm):
                                      validators=[DataRequired(), EqualTo('new_password')])
     submit = SubmitField('Смена пароля')
 
-
 class AnalysisForm(FlaskForm):
     symbol = SelectField('Cryptocurrency Symbol', validators=[DataRequired()])
-
     timeframe = SelectField('Период', choices=[
         ('1d', '1 день'),
         ('1w', '1 неделя'),
@@ -108,21 +94,18 @@ class AnalysisForm(FlaskForm):
     ])
     analysis_type = SelectField('Тип анализа', choices=[
         ('price', 'График цены'),
-        #('volume', 'Анализ объема'),
         ('trend', 'Анализ тренда'),
         ('volatility', 'Анализ волатильности'),
         ('neural', 'Нейросетевой прогноз')
     ])
     submit = SubmitField('Анализировать')
 
-
 # Загрузчик пользователя
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
-# Маршруты аутентификации
+# Главная/аутентификация
 @app.route('/')
 def home():
     if current_user.is_authenticated:
@@ -133,7 +116,6 @@ def home():
         elif current_user.role == 'trader':
             return redirect(url_for('trader_dashboard'))
     return redirect(url_for('login'))
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -152,7 +134,6 @@ def login():
         flash('Неверное имя пользователя или пароль', 'danger')
     return render_template('auth/login.html', form=form)
 
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
@@ -161,10 +142,8 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
-            # Валидация email
             valid = validate_email(form.email.data)
             form.email.data = valid.email
-
         except EmailNotValidError as e:
             flash(str(e), 'danger')
             return redirect(url_for('register'))
@@ -187,7 +166,6 @@ def register():
         flash('Регистрация успешна! Пожалуйста, войдите.', 'success')
         return redirect(url_for('login'))
     return render_template('auth/register.html', form=form)
-
 
 @app.route('/admin/add_user', methods=['POST'])
 @login_required
@@ -224,13 +202,11 @@ def admin_add_user():
 
     return redirect(url_for('admin_users'))
 
-
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
 
 # Администраторские маршруты
 @app.route('/admin/dashboard')
@@ -239,10 +215,8 @@ def admin_dashboard():
     if current_user.role != 'admin':
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
-
     users = User.query.all()
     return render_template('admin/dashboard.html', users=users)
-
 
 @app.route('/admin/users')
 @login_required
@@ -250,16 +224,13 @@ def admin_users():
     if current_user.role != 'admin':
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
-
     users = User.query.all()
     add_form = RegistrationForm(prefix='add')
     edit_form = UserEditForm(prefix='edit')
-
     return render_template('admin/users.html',
                            users=users,
                            add_form=add_form,
                            edit_form=edit_form)
-
 
 @app.route('/admin/user/<int:user_id>', methods=['GET', 'POST'])
 @login_required
@@ -298,7 +269,6 @@ def edit_user(user_id):
 
     return render_template('admin/edit_user.html', form=form, user=user)
 
-
 @app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):
@@ -316,7 +286,6 @@ def delete_user(user_id):
     flash('Пользователь удален успешно', 'success')
     return redirect(url_for('admin_users'))
 
-
 # Маршруты трейдера
 @app.route('/trader/dashboard')
 @login_required
@@ -325,23 +294,24 @@ def trader_dashboard():
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
 
-    popular_cryptos = ['BTC-USD', 'ETH-USD', 'BNB-USD', 'ADA-USD', 'SOL-USD']
+    popular_cryptos = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT']
     crypto_data = []
+    exchange = ccxt.binance()
+    tickers = exchange.fetch_tickers(popular_cryptos)
 
     for symbol in popular_cryptos:
-        data = yf.Ticker(symbol).history(period='1d')
-        if not data.empty:
+        t = tickers.get(symbol)
+        if t:
             crypto_data.append({
-                'symbol': symbol,
-                'price': round(data['Close'].iloc[-1], 2),
-                'change': round(((data['Close'].iloc[-1] - data['Open'].iloc[-1]) / data['Open'].iloc[-1]) * 100, 2),
-                'high': round(data['High'].iloc[-1], 2),
-                'low': round(data['Low'].iloc[-1], 2),
-                'volume': int(data['Volume'].iloc[-1])
+                'symbol': symbol.replace('/', '-'),
+                'price': round(t.get('last', 0), 2),
+                'change': round(t.get('percentage', 0), 2),
+                'high': round(t.get('high', 0), 2),
+                'low': round(t.get('low', 0), 2),
+                'volume': int(t.get('baseVolume', 0))
             })
 
     return render_template('trader/dashboard.html', crypto_data=crypto_data)
-
 
 @app.route('/trader/market')
 @login_required
@@ -357,8 +327,36 @@ def trader_market():
     tickers = exchange.fetch_tickers(crypto_list[:50])
     return render_template('trader/market.html', tickers=tickers, now=datetime.now())
 
+@app.route('/trader/chart/<symbol>')
+@login_required
+def trader_chart(symbol):
+    if current_user.role != 'trader':
+        flash('Доступ запрещен', 'danger')
+        return redirect(url_for('home'))
 
-# Маршруты аналитика
+    binance_symbol = symbol.replace('-', '/')
+    price = change = high = low = volume = None
+
+    try:
+        exchange = ccxt.binance()
+        t = exchange.fetch_ticker(binance_symbol)
+        price = t.get('last', 0)
+        high = t.get('high', 0)
+        low = t.get('low', 0)
+        volume = t.get('baseVolume', 0)
+        change = t.get('percentage', 0)
+    except Exception as e:
+        flash(f"Не удалось загрузить данные: {e}", "danger")
+
+    return render_template("trader/chart.html",
+                           symbol=symbol,
+                           price=price,
+                           change=change,
+                           high=high,
+                           low=low,
+                           volume=volume)
+
+# Аналитик
 @app.route('/analyst/dashboard')
 @login_required
 def analyst_dashboard():
@@ -397,11 +395,11 @@ def analyze():
 
     # Подбираем таймфрейм и количество свечей в зависимости от выбранного периода
     timeframe_map = {
-        '1d':  ('15m', 96),   # 1 день по 15-минутным свечам
-        '1w':  ('1h', 168),   # 1 неделя по часовым свечам
-        '1m':  ('4h', 180),   # 1 месяц по 4-часовым свечам
-        '3m':  ('1d', 90),    # 3 месяца по дневным свечам
-        '1y':  ('1d', 365),   # 1 год по дневным свечам
+        '1d':  ('15m', 96),
+        '1w':  ('1h', 168),
+        '1m':  ('4h', 180),
+        '3m':  ('1d', 90),
+        '1y':  ('1d', 365),
     }
 
     if form.validate_on_submit():
@@ -418,13 +416,11 @@ def analyze():
                 flash(f'Недостаточно данных для построения графика (получено {len(data)} точек).', 'warning')
                 return render_template('analyst/analyze.html', form=form)
 
-            # --- Price Chart ---
             if analysis_type == 'price':
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
                 fig.update_layout(title=f'{symbol} Price Chart', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-            # --- Trend Analysis ---
             elif analysis_type == 'trend':
                 data['MA_7'] = data['close'].rolling(window=7).mean()
                 data['MA_30'] = data['close'].rolling(window=30).mean()
@@ -434,7 +430,6 @@ def analyze():
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_30'], mode='lines', name='30-периодная MA'))
                 fig.update_layout(title=f'{symbol} Trend Analysis', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-            # --- Volatility Analysis ---
             elif analysis_type == 'volatility':
                 data['Return'] = data['close'].pct_change()
                 data['Volatility'] = data['Return'].rolling(window=7).std() * (365 ** 0.5)
@@ -442,7 +437,6 @@ def analyze():
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['Volatility'], mode='lines', name='Волатильность'))
                 fig.update_layout(title=f'{symbol} Volatility Analysis', xaxis_title='Дата', yaxis_title='Волатильность', template='plotly_white')
 
-            # --- Neural Forecast (LSTM) ---
             elif analysis_type == 'neural':
                 df = data[['close']]
                 scaler = MinMaxScaler()
@@ -511,7 +505,6 @@ def analyze():
                               annotation_text=f"Прогноз: {round(predicted_price,2)}", annotation_position="top left")
                 fig.update_layout(title=f'{symbol} — Прогноз цены (LSTM)', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-            # Аналитические показатели
             if analysis_type != 'neural':
                 close_start = float(data['close'].iloc[0])
                 close_end = float(data['close'].iloc[-1])
@@ -545,8 +538,7 @@ def analyze():
 
     return render_template('analyst/analyze.html', form=form, plot_div=plot_div, analysis_results=analysis_results)
 
-
-# Маршруты профиля
+# Профиль пользователя
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -580,7 +572,6 @@ def profile():
 
     return render_template('profile.html', form=form, password_form=password_form)
 
-
 @app.route('/change_password', methods=['POST'])
 @login_required
 def change_password():
@@ -598,44 +589,28 @@ def change_password():
 
     return redirect(url_for('profile'))
 
-
-# API маршруты
+# API — получить данные по тикеру через Binance/ccxt
 @app.route('/api/crypto/<symbol>')
 @login_required
 def get_crypto_data(symbol):
     try:
-        data = yf.Ticker(symbol).history(period='1mo')
-        if data.empty:
+        binance_symbol = symbol.replace('-', '/')
+        exchange = ccxt.binance()
+        t = exchange.fetch_ticker(binance_symbol)
+        if not t:
             return jsonify({'error': 'No data available'}), 404
 
         return jsonify({
             'symbol': symbol,
-            'current_price': round(data['Close'].iloc[-1], 2),
-            'change': round(((data['Close'].iloc[-1] - data['Open'].iloc[0]) / data['Open'].iloc[0]) * 100, 2),
-            'high': round(data['High'].max(), 2),
-            'low': round(data['Low'].min(), 2),
-            'volume': int(data['Volume'].mean())
+            'current_price': round(t.get('last', 0), 2),
+            'change': round(t.get('percentage', 0), 2),
+            'high': round(t.get('high', 0), 2),
+            'low': round(t.get('low', 0), 2),
+            'volume': int(t.get('baseVolume', 0))
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-'''
-# Инициализация базы данных
-@app.before_first_request
-def create_tables():
-    db.create_all()
-    if not User.query.filter_by(username='admin').first():
-        admin = User(
-            username='admin',
-            email='admin@example.com',
-            role='admin',
-            full_name='System Administrator'
-        )
-        admin.set_password('admin123')
-        db.session.add(admin)
-        db.session.commit()
-
-'''
 @app.route('/api/market_data')
 @login_required
 def api_market_data():
@@ -645,72 +620,34 @@ def api_market_data():
     tickers = exchange.fetch_tickers(crypto_list[:50])
     return jsonify(tickers)
 
-@app.route('/trader/chart/<symbol>')
-@login_required
-def trader_chart(symbol):
-    if current_user.role != 'trader':
-        flash('Доступ запрещен', 'danger')
-        return redirect(url_for('home'))
-
-    # Получаем параметры из URL, если переданы
-    price = request.args.get('price', type=float)
-    change = request.args.get('change', type=float)
-    high = request.args.get('high', type=float)
-    low = request.args.get('low', type=float)
-    volume = request.args.get('volume', type=float)
-
-    # Если хотя бы один параметр отсутствует — загружаем с yfinance
-    if any(v is None for v in [price, change, high, low, volume]):
-        try:
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period="2d", interval="1d")
-
-            if not data.empty:
-                today = data.iloc[-1]
-                yesterday = data.iloc[-2] if len(data) > 1 else today
-
-                price = today["Close"]
-                high = today["High"]
-                low = today["Low"]
-                volume = today["Volume"]
-                change = ((price - yesterday["Close"]) / yesterday["Close"]) * 100 if yesterday["Close"] else 0.0
-        except Exception as e:
-            flash(f"Не удалось загрузить данные: {e}", "danger")
-
-    return render_template("trader/chart.html",
-                           symbol=symbol,
-                           price=price,
-                           change=change,
-                           high=high,
-                           low=low,
-                           volume=volume)
-
 @app.route('/api/realtime_prices')
 @login_required
 def api_realtime_prices():
     symbol = request.args.get('symbol', 'BTC-USD')
-
+    binance_symbol = symbol.replace('-', '/')
     try:
-        data = yf.Ticker(symbol).history(period='1d', interval='1m')
-        if data.empty:
+        exchange = ccxt.binance()
+        ohlcv = exchange.fetch_ohlcv(binance_symbol, timeframe='1m', limit=60)
+        if not ohlcv:
             return jsonify({'timestamps': [], 'prices': []})
 
-        timestamps = data.index.strftime('%H:%M').tolist()
-        prices = [round(p, 2) for p in data['Close'].fillna(method='ffill')]
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+        timestamps = df['datetime'].dt.strftime('%H:%M').tolist()
+        prices = [round(p, 2) for p in df['close'].tolist()]
 
         return jsonify({'timestamps': timestamps, 'prices': prices})
 
     except Exception as e:
         return jsonify({'error': str(e), 'timestamps': [], 'prices': []}), 500
 
+# Получить исторические данные по свечам (для анализа)
 def get_binance_ohlcv(symbol, timeframe='1h', limit=500):
-    # timeframe: '1m', '5m', '15m', '1h', '4h', '1d', '1w'
     exchange = ccxt.binance()
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
-
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -286,6 +286,12 @@ def delete_user(user_id):
     flash('Пользователь удален успешно', 'success')
     return redirect(url_for('admin_users'))
 
+def safe_round(value, digits=2, default=0):
+    try:
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return default
+
 # Маршруты трейдера
 @app.route('/trader/dashboard')
 @login_required
@@ -304,11 +310,11 @@ def trader_dashboard():
         if t:
             crypto_data.append({
                 'symbol': symbol.replace('/', '-'),
-                'price': round(t.get('last', 0), 2),
-                'change': round(t.get('percentage', 0), 2),
-                'high': round(t.get('high', 0), 2),
-                'low': round(t.get('low', 0), 2),
-                'volume': int(t.get('baseVolume', 0))
+                'price': safe_round(t.get('last')),
+                'change': safe_round(t.get('percentage')),
+                'high': safe_round(t.get('high')),
+                'low': safe_round(t.get('low')),
+                'volume': int(t.get('baseVolume') or 0)
             })
 
     return render_template('trader/dashboard.html', crypto_data=crypto_data)

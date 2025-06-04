@@ -303,11 +303,9 @@ def trader_dashboard():
     popular_cryptos = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT']
     crypto_data = []
     exchange = ccxt.binance()
-    tickers = exchange.fetch_tickers(popular_cryptos)
-
     for symbol in popular_cryptos:
-        t = tickers.get(symbol)
-        if t:
+        try:
+            t = exchange.fetch_ticker(symbol)
             crypto_data.append({
                 'symbol': symbol.replace('/', '-'),
                 'price': safe_round(t.get('last')),
@@ -316,7 +314,15 @@ def trader_dashboard():
                 'low': safe_round(t.get('low')),
                 'volume': int(t.get('baseVolume') or 0)
             })
-
+        except Exception as e:
+            crypto_data.append({
+                'symbol': symbol.replace('/', '-'),
+                'price': 0,
+                'change': 0,
+                'high': 0,
+                'low': 0,
+                'volume': 0
+            })
     return render_template('trader/dashboard.html', crypto_data=crypto_data)
 
 @app.route('/trader/market')

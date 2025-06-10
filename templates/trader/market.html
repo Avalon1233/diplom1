@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Crypto Market - Trader{% endblock %}
+{% block title %}Крипто Рынок – Трейдер{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Crypto Market Overview</h2>
+    <h2>Обзор крипторынка</h2>
     <div>
-      <span id="lastUpdated" class="text-muted me-2">Last updated: <span id="timestamp">{{ now.strftime('%H:%M:%S') }}</span></span>
-      <i class="bi bi-arrow-clockwise refresh-btn" id="refreshData" title="Refresh data"></i>
+      <span id="lastUpdated" class="text-muted me-2">Последнее обновление: <span id="timestamp">{{ now.strftime('%H:%M:%S') }}</span></span>
+      <i class="bi bi-arrow-clockwise refresh-btn" id="refreshData" title="Обновить данные"></i>
     </div>
   </div>
 
@@ -16,11 +16,11 @@
     <div class="card-header">
       <div class="row align-items-center">
         <div class="col-md-6">
-          <h5 class="mb-0">Market Prices</h5>
+          <h5 class="mb-0">Цены на рынке</h5>
         </div>
         <div class="col-md-6">
           <div class="input-group search-box">
-            <input type="text" id="searchInput" class="form-control" placeholder="Search cryptocurrencies...">
+            <input type="text" id="searchInput" class="form-control" placeholder="Поиск криптовалют...">
             <button class="btn btn-outline-secondary" type="button" id="searchButton">
               <i class="bi bi-search"></i>
             </button>
@@ -33,12 +33,12 @@
       <table class="table table-hover" id="marketTable">
         <thead class="sticky-header">
           <tr>
-            <th>Symbol</th>
-            <th>Last Price</th>
-            <th>24h Change</th>
-            <th>24h High</th>
-            <th>24h Low</th>
-            <th>Volume</th>
+            <th>Символ</th>
+            <th>Последняя цена</th>
+            <th>Изменение за 24 ч</th>
+            <th>Макс. за 24 ч</th>
+            <th>Мин. за 24 ч</th>
+            <th>Объём</th>
           </tr>
         </thead>
         <tbody id="marketBody">

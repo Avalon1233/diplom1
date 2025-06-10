@@ -20,6 +20,7 @@ from sklearn.preprocessing import MinMaxScaler
 import plotly.graph_objs as go
 import plotly.io as pio
 
+
 app = Flask(__name__)
 app.config.from_object('config.Config')
 
@@ -493,6 +494,7 @@ def analyze():
                         with torch.no_grad():
                             val_output = model(x_val)
                             val_loss = loss_fn(val_output.squeeze(), y_val)
+
                         if val_loss < best_val_loss:
                             best_val_loss = val_loss
                             early_stop_count = 0
@@ -513,8 +515,7 @@ def analyze():
 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data['datetime'], y=df['close'], mode='lines', name='Историческая цена'))
-                fig.add_hline(y=predicted_price, line_dash="dash",
-                              annotation_text=f"Прогноз: {round(predicted_price,2)}", annotation_position="top left")
+                fig.add_hline(y=predicted_price, line_dash="dash", annotation_text=f"Прогноз: {round(predicted_price,2)}", annotation_position="top left")
                 fig.update_layout(title=f'{symbol} — Прогноз цены (LSTM)', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
             if analysis_type != 'neural':

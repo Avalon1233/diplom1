@@ -1,11 +1,11 @@
 <!-- trader/dashboard.html -->
 {% extends "base.html" %}
 
-{% block title %}Trader Dashboard{% endblock %}
+{% block title %}Панель трейдера{% endblock %}
 
 {% block content %}
 <div class="container">
-    <h2 class="my-4">Trader Dashboard</h2>
+    <h2 class="my-4">Популярные криптовалюты</h2>
 
     <div class="row">
         {% for crypto in crypto_data %}
@@ -18,10 +18,10 @@
                         <span class="{{ 'text-success' if crypto.change >= 0 else 'text-danger' }}">
                             {{ crypto.change }}%
                         </span>
-                        today
+                        сегодня
                     </p>
                     <a href="{{ url_for('trader_chart', symbol=crypto.symbol) }}" class="card-link">Показать график</a>
-                    </div>
+                </div>
             </div>
         </div>
         {% endfor %}
@@ -29,19 +29,19 @@
 
     <div class="card mt-4">
         <div class="card-header">
-            <h5>Market Watch</h5>
+            <h5>Наблюдение за рынком</h5>
         </div>
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
                         <tr>
-                            <th>Symbol</th>
-                            <th>Price</th>
-                            <th>24h Change</th>
-                            <th>24h High</th>
-                            <th>24h Low</th>
-                            <th>Volume</th>
+                            <th>Символ</th>
+                            <th>Цена</th>
+                            <th>Изменение за 24 ч</th>
+                            <th>Максимум за 24 ч</th>
+                            <th>Минимум за 24 ч</th>
+                            <th>Объём</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -333,36 +333,36 @@ def trader_market():
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
 
-    exchange = ccxt.binance({
-        'enableRateLimit': True,
-        'timeout': 30000,
-    })
-    markets = exchange.load_markets()
-    crypto_list = [m for m in markets if '/' in m]
-
-    # тянем первые 50 тикеров
-    tickers = exchange.fetch_tickers(crypto_list[:50])
-
-    # подготавливаем данные для шаблона
+    exchange = ccxt.binance()
+    exchange.load_markets()
+    # только основные ликвидные пары к USDT
+    symbols = [
+        'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT', 'XRP/USDT',
+        'DOGE/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT', 'TON/USDT', 'LINK/USDT'
+    ]
     market_data = []
-    for symbol, t in tickers.items():
-        # отбросим неполные записи
-        if None in (t.get('last'), t.get('percentage'), t.get('high'), t.get('low'), t.get('baseVolume')):
+    for symbol in symbols:
+        try:
+            t = exchange.fetch_ticker(symbol)
+            market_data.append({
+                'symbol': symbol.replace('/', '-'),
+                'last': round(t.get('last', 0), 2),
+                'change': round(t.get('percentage', 0), 2),
+                'high': round(t.get('high', 0), 2),
+                'low': round(t.get('low', 0), 2),
+                'volume': round(t.get('baseVolume', 0), 2),
+            })
+        except Exception as e:
+            # Если что-то пошло не так, просто пропусти
             continue
-        market_data.append({
-            'symbol':    symbol.replace('/', '-'),
-            'last':      round(t['last'],      2),
-            'change':    round(t['percentage'],2),
-            'high':      round(t['high'],      2),
-            'low':       round(t['low'],       2),
-            'volume':    round(t['baseVolume'],2),
-        })
 
     return render_template(
         'trader/market.html',
         market_data=market_data,
-        now=datetime.utcnow()
+        now=datetime.now()
     )
+
+
 
 @app.route('/trader/chart/<symbol>')
 @login_required

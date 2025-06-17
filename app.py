@@ -456,7 +456,7 @@ def analyze():
             if analysis_type == 'price':
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
-                fig.update_layout(title=f'{symbol} Price Chart', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
+                fig.update_layout(title=f'{symbol} График цены', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
             elif analysis_type == 'trend':
                 data['MA_7'] = data['close'].rolling(window=7).mean()
@@ -465,14 +465,14 @@ def analyze():
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_7'], mode='lines', name='7-периодная MA'))
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_30'], mode='lines', name='30-периодная MA'))
-                fig.update_layout(title=f'{symbol} Trend Analysis', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
+                fig.update_layout(title=f'{symbol} Анализ тренда', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
             elif analysis_type == 'volatility':
                 data['Return'] = data['close'].pct_change()
                 data['Volatility'] = data['Return'].rolling(window=7).std() * (365 ** 0.5)
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['Volatility'], mode='lines', name='Волатильность'))
-                fig.update_layout(title=f'{symbol} Volatility Analysis', xaxis_title='Дата', yaxis_title='Волатильность', template='plotly_white')
+                fig.update_layout(title=f'{symbol} Анализ волатильности', xaxis_title='Дата', yaxis_title='Волатильность', template='plotly_white')
 
             elif analysis_type == 'neural':
                 df = data[['close']]
@@ -505,6 +505,18 @@ def analyze():
                 loss_fn = nn.MSELoss()
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
                 best_val_loss = float('inf')
+                #временно добавил для проверки
+                val_outputs = model(x_val).squeeze().detach().numpy()
+                val_true = y_val.detach().numpy()
+                # Преобразовать обратно к реальным ценам
+                val_outputs_inv = scaler.inverse_transform(val_outputs.reshape(-1, 1))
+                val_true_inv = scaler.inverse_transform(val_true.reshape(-1, 1))
+                rmse = np.sqrt(np.mean((val_outputs_inv - val_true_inv) ** 2))
+                print(f'RMSE на валидации: {rmse:.2f} USD')
+                # вот до этого момента
+                mape = np.mean(np.abs((val_true_inv - val_outputs_inv) / val_true_inv)) * 100
+                print(f'MAPE: {mape:.2f}%')
+                # вверху ещё MAE
                 early_stop_count = 0
                 model_file = f"model_{symbol.replace('-', '_')}_ccxt.pt"
                 if os.path.exists(model_file):

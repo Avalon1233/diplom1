@@ -3,44 +3,68 @@
 {% block title %}Аналитическая панель{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2 class="mb-4 text-center">Добро пожаловать, {{ current_user.full_name }}!</h2>
+<div class="container py-5">
+    <h2 class="mb-5 text-center fw-bold">
+        Добро пожаловать, {{ current_user.full_name }}!
+    </h2>
 
-    <div class="row g-4">
+    <div class="row g-4 justify-content-center">
         <!-- Блок: Анализ рынка -->
         <div class="col-md-6">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h5 class="card-title text-primary"><i class="bi bi-bar-chart-line"></i> Анализ рынка</h5>
-                    <p class="card-text">Изучайте цену, тренды, волатильность и прогнозы криптовалют с помощью нейросетей.</p>
-                    <a href="{{ url_for('analyze') }}" class="btn btn-outline-primary">Открыть инструменты анализа</a>
+            <div class="card shadow-lg border-0 h-100">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title text-primary mb-3"><i class="bi bi-bar-chart-line"></i> Анализ рынка</h5>
+                    <p class="card-text flex-grow-1">
+                        Исследуйте цену, тренды и волатильность криптовалют с помощью интеллектуальных инструментов анализа.
+                    </p>
+                    <a href="{{ url_for('analyze') }}" class="btn btn-primary mt-2 w-100">Открыть инструменты анализа</a>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Блок: Последние тренды -->
-        <div class="col-md-6">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h5 class="card-title text-info"><i class="bi bi-graph-up"></i> Последние тренды</h5>
-                    <p class="card-text">Просмотрите последние изменения на рынке и ключевые тенденции за последние дни.</p>
-                    <a href="{{ url_for('analyze') }}" class="btn btn-outline-info">Перейти к трендам</a>
+    <!-- Краткая статистика -->
+    <div class="row mt-5 g-4 justify-content-center">
+        <div class="col-md-3">
+            <div class="card bg-light border-0 text-center shadow-sm">
+                <div class="card-body py-4">
+                    <div class="fs-2 fw-bold text-primary"><i class="bi bi-currency-bitcoin"></i></div>
+                    <div class="fw-bold">5</div>
+                    <div class="text-muted small">Доступных криптовалют</div>
                 </div>
             </div>
         </div>
+        <div class="col-md-3">
+            <div class="card bg-light border-0 text-center shadow-sm">
+                <div class="card-body py-4">
+                    <div class="fs-2 fw-bold text-success"><i class="bi bi-bar-chart-fill"></i></div>
+                    <div class="fw-bold">4</div>
+                    <div class="text-muted small">Типа анализа</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light border-0 text-center shadow-sm">
+                <div class="card-body py-4">
+                    <div class="fs-2 fw-bold text-info"><i class="bi bi-calendar3"></i></div>
+                    <div class="fw-bold">5</div>
+                    <div class="text-muted small">Временных периода</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-
-
-
-        <!-- Блок: Краткое руководство (опционально) -->
-        <div class="col-12">
-            <div class="card border-light bg-light">
+    <!-- Блок: Краткое руководство -->
+    <div class="row mt-5">
+        <div class="col-lg-8 mx-auto">
+            <div class="card border-0 bg-white shadow-sm">
                 <div class="card-body">
-                    <h6 class="card-subtitle mb-2 text-muted">Как использовать:</h6>
-                    <ul>
-                        <li>Выберите криптовалюту и период анализа</li>
-                        <li>Выберите тип анализа: цена, тренд, волатильность, прогноз</li>
-                        <li>Получите визуализацию и ключевые метрики</li>
+                    <h6 class="card-subtitle mb-2 text-muted"><i class="bi bi-question-circle"></i> Как использовать панель аналитика:</h6>
+                    <ul class="mb-0">
+                        <li>Выберите криптовалюту и временной диапазон</li>
+                        <li>Определите тип анализа: график цены, тренд, волатильность и нейросетевой анализ</li>
+                        <li>Сравните динамику и ключевые метрики</li>
+                        <li>Используйте результаты для принятия решений</li>
                     </ul>
                 </div>
             </div>

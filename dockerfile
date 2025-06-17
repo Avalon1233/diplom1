@@ -3,10 +3,16 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
     build-essential \
+    ca-certificates \
+    libssl-dev \
+    libpq-dev \
+    gcc \
     libgl1-mesa-glx \
-    libpq-dev gcc \
-    python3-setuptools python3-wheel python3-pip \
-    && rm -rf /var/lib/apt/lists/**
+    python3-setuptools \
+    python3-wheel \
+    python3-pip \
+  && update-ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 
 WORKDIR /app

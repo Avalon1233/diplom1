@@ -7,8 +7,12 @@
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Обзор крипторынка</h2>
     <div>
-      <span id="lastUpdated" class="text-muted me-2">Последнее обновление: <span id="timestamp">{{ now.strftime('%H:%M:%S') }}</span></span>
-      <i class="bi bi-arrow-clockwise refresh-btn" id="refreshData" title="Обновить данные"></i>
+      <span class="text-muted me-2" title="{{ now.strftime('%Y-%m-%d %H:%M:%S') }}">
+        Последнее обновление: {{ now.strftime('%H:%M:%S') }}
+      </span>
+      <a href="{{ url_for('trader_market') }}" title="Обновить">
+        <i class="bi bi-arrow-clockwise"></i>
+      </a>
     </div>
   </div>
 
@@ -29,9 +33,9 @@
       </div>
     </div>
 
-    <div class="card-body table-container">
+    <div class="card-body table-responsive">
       <table class="table table-hover" id="marketTable">
-        <thead class="sticky-header">
+        <thead class="table-light">
           <tr>
             <th>Символ</th>
             <th>Последняя цена</th>
@@ -42,23 +46,17 @@
           </tr>
         </thead>
         <tbody id="marketBody">
-          {% for symbol, ticker in tickers.items() %}
-            {% if ticker.get('last') is not none and
-                  ticker.get('percentage') is not none and
-                  ticker.get('high') is not none and
-                  ticker.get('low') is not none and
-                  ticker.get('baseVolume') is not none %}
-            <tr data-symbol="{{ symbol }}">
-              <td>{{ symbol }}</td>
-              <td>${{ ticker['last'] | round(2) }}</td>
-              <td class="{{ 'text-success' if ticker['percentage'] >= 0 else 'text-danger' }}">
-                {{ ticker['percentage'] | round(2) }}%
-              </td>
-              <td>${{ ticker['high'] | round(2) }}</td>
-              <td>${{ ticker['low'] | round(2) }}</td>
-              <td>{{ ticker['baseVolume'] | round(2) }}</td>
-            </tr>
-            {% endif %}
+          {% for c in market_data %}
+          <tr data-symbol="{{ c.symbol }}">
+            <td>{{ c.symbol }}</td>
+            <td>${{ c.last }}</td>
+            <td class="{{ 'text-success' if c.change>=0 else 'text-danger' }}">
+              {{ c.change }}%
+            </td>
+            <td>${{ c.high }}</td>
+            <td>${{ c.low }}</td>
+            <td>{{ c.volume }}</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -69,51 +67,22 @@
 
 {% block scripts %}
 <script>
-  async function fetchMarketData() {
-    try {
-      const response = await fetch('/api/market_data');
-      const data = await response.json();
-      const tbody = document.getElementById('marketBody');
-      tbody.innerHTML = '';
-
-      for (const [symbol, t] of Object.entries(data)) {
-        if ([t.last, t.percentage, t.high, t.low, t.baseVolume].every(v => v !== null && v !== undefined)) {
-          const changeClass = t.percentage >= 0 ? 'text-success' : 'text-danger';
-          const row = `
-            <tr>
-              <td>${symbol}</td>
-              <td>$${t.last.toFixed(2)}</td>
-              <td class="${changeClass}">${t.percentage.toFixed(2)}%</td>
-              <td>$${t.high.toFixed(2)}</td>
-              <td>$${t.low.toFixed(2)}</td>
-              <td>${t.baseVolume.toFixed(2)}</td>
-            </tr>
-          `;
-          tbody.insertAdjacentHTML('beforeend', row);
-        }
-      }
-
-      document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
-    } catch (e) {
-      alert('Ошибка при обновлении данных.');
-    }
-  }
-
-  document.getElementById('refreshData').addEventListener('click', fetchMarketData);
-  document.getElementById('searchButton').addEventListener('click', filterTable);
-  document.getElementById('searchInput').addEventListener('keyup', function(e) {
-    if (e.key === 'Enter') filterTable();
-  });
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.getElementById('marketBody');
+  const searchInput  = document.getElementById('searchInput');
+  const searchButton = document.getElementById('searchButton');
 
   function filterTable() {
-    const filter = document.getElementById('searchInput').value.toUpperCase();
-    const rows = document.querySelectorAll('#marketTable tbody tr');
-    rows.forEach(row => {
-      const symbol = row.cells[0]?.textContent.toUpperCase();
-      row.style.display = symbol.includes(filter) ? '' : 'none';
+    const filter = searchInput.value.toUpperCase();
+    tbody.querySelectorAll('tr').forEach(row => {
+      row.style.display = row.dataset.symbol.toUpperCase().includes(filter) ? '' : 'none';
     });
   }
 
-  setInterval(fetchMarketData, 30000);
+  searchButton.addEventListener('click', filterTable);
+  searchInput.addEventListener('keyup', e => {
+    if (e.key === 'Enter') filterTable();
+  });
+});
 </script>
 {% endblock %}

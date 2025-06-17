@@ -333,12 +333,36 @@ def trader_market():
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
 
-    exchange = ccxt.binance()
+    exchange = ccxt.binance({
+        'enableRateLimit': True,
+        'timeout': 30000,
+    })
     markets = exchange.load_markets()
-    crypto_list = [market for market in markets if '/' in market]
+    crypto_list = [m for m in markets if '/' in m]
 
+    # тянем первые 50 тикеров
     tickers = exchange.fetch_tickers(crypto_list[:50])
-    return render_template('trader/market.html', tickers=tickers, now=datetime.now())
+
+    # подготавливаем данные для шаблона
+    market_data = []
+    for symbol, t in tickers.items():
+        # отбросим неполные записи
+        if None in (t.get('last'), t.get('percentage'), t.get('high'), t.get('low'), t.get('baseVolume')):
+            continue
+        market_data.append({
+            'symbol':    symbol.replace('/', '-'),
+            'last':      round(t['last'],      2),
+            'change':    round(t['percentage'],2),
+            'high':      round(t['high'],      2),
+            'low':       round(t['low'],       2),
+            'volume':    round(t['baseVolume'],2),
+        })
+
+    return render_template(
+        'trader/market.html',
+        market_data=market_data,
+        now=datetime.utcnow()
+    )
 
 @app.route('/trader/chart/<symbol>')
 @login_required

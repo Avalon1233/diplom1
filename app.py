@@ -85,7 +85,7 @@ class PasswordChangeForm(FlaskForm):
     submit = SubmitField('Смена пароля')
 
 class AnalysisForm(FlaskForm):
-    symbol = SelectField('Cryptocurrency Symbol', validators=[DataRequired()])
+    symbol = SelectField('Выбор криптовалюты', validators=[DataRequired()])
     timeframe = SelectField('Период', choices=[
         ('1d', '1 день'),
         ('1w', '1 неделя'),

@@ -19,13 +19,6 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import plotly.graph_objs as go
 import plotly.io as pio
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,  # Для более подробного: logging.DEBUG
-    format='%(asctime)s %(levelname)s %(name)s: %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 
 app = Flask(__name__)
@@ -314,15 +307,19 @@ def trader_dashboard():
     for symbol in popular_cryptos:
         try:
             t = exchange.fetch_ticker(symbol)
-            crypto_data.append({
+            print(f"RAW TICKER for {symbol}:", t)
+            data_item = {
                 'symbol': symbol.replace('/', '-'),
                 'price': safe_round(t.get('last')),
                 'change': safe_round(t.get('percentage')),
                 'high': safe_round(t.get('high')),
                 'low': safe_round(t.get('low')),
                 'volume': int(t.get('baseVolume') or 0)
-            })
+            }
+            print(f"DASHBOARD_DATA_ITEM for {symbol}:", data_item)
+            crypto_data.append(data_item)
         except Exception as e:
+            print(f"ERROR fetching {symbol}: {e}")
             crypto_data.append({
                 'symbol': symbol.replace('/', '-'),
                 'price': 0,
@@ -340,48 +337,37 @@ def trader_market():
         flash('Доступ запрещен', 'danger')
         return redirect(url_for('home'))
 
-    try:
-        exchange = ccxt.binance()
-        exchange.load_markets()
-        symbols = [
-            'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT', 'XRP/USDT',
-            'DOGE/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT', 'TON/USDT', 'LINK/USDT'
-        ]
-        market_data = []
-        for symbol in symbols:
-            try:
-                t = exchange.fetch_ticker(symbol)
-                market_data.append({
-                    'symbol': symbol.replace('/', '-'),
-                    'last': round(t.get('last', 0), 2),
-                    'change': round(t.get('percentage', 0), 2),
-                    'high': round(t.get('high', 0), 2),
-                    'low': round(t.get('low', 0), 2),
-                    'volume': round(t.get('baseVolume', 0), 2),
-                })
-            except Exception as e:
-                logger.error(f"Ошибка при получении тикера {symbol}: {e}")
-                # Можно добавить пропуск или flash
-                continue
+    exchange = ccxt.binance()
+    exchange.load_markets()
+    # только основные ликвидные пары к USDT
+    symbols = [
+        'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT', 'XRP/USDT',
+        'DOGE/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT', 'TON/USDT', 'LINK/USDT'
+    ]
+    market_data = []
+    for symbol in symbols:
+        try:
+            t = exchange.fetch_ticker(symbol)
+            print(f"RAW TICKER for {symbol}:", t)
+            data_item = ({
+                'symbol': symbol.replace('/', '-'),
+                'last': round(t.get('last', 0), 2),
+                'change': round(t.get('percentage', 0), 2),
+                'high': round(t.get('high', 0), 2),
+                'low': round(t.get('low', 0), 2),
+                'volume': round(t.get('baseVolume', 0), 2),
+            })
+            print(f"MARKET_DATA_ITEM for {symbol}:", data_item)
+            market_data.append(data_item)
+        except Exception as e:
+            print(f"ERROR fetching {symbol}: {e}")
+            continue
 
-        if not market_data:
-            logger.warning("market_data пустой — возможно, нет доступа к Binance или API возвращает ошибку")
-            flash("Не удалось загрузить рыночные данные. Проверьте подключение к интернету или обратитесь к администратору.", "danger")
-
-        return render_template(
-            'trader/market.html',
-            market_data=market_data,
-            now=datetime.now()
-        )
-    except Exception as e:
-        logger.critical(f"Ошибка на уровне trader_market: {e}", exc_info=True)
-        flash(f"Критическая ошибка в модуле рынка: {e}", "danger")
-        return render_template(
-            'trader/market.html',
-            market_data=[],
-            now=datetime.now()
-        )
-
+    return render_template(
+        'trader/market.html',
+        market_data=market_data,
+        now=datetime.now()
+    )
 
 
 

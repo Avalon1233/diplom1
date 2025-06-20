@@ -31,7 +31,7 @@
                         <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_users') }}">Пользователи</a></li>
                     {% elif current_user.role == 'trader' %}
                         <li class="nav-item"><a class="nav-link" href="{{ url_for('trader_dashboard') }}">Трейдер</a></li>
-                       <!-- <li class="nav-item"><a class="nav-link" href="{{ url_for('trader_market') }}">Маркет</a></li>  временно убран маркет-->
+                        <li class="nav-item"><a class="nav-link" href="{{ url_for('trader_market') }}">Маркет</a></li>
                     {% elif current_user.role == 'analyst' %}
                         <li class="nav-item"><a class="nav-link" href="{{ url_for('analyst_dashboard') }}">Аналитик</a></li>
                         <li class="nav-item"><a class="nav-link" href="{{ url_for('analyze') }}">Анализ</a></li>

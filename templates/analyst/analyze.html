@@ -6,75 +6,185 @@
 <div class="container mt-4">
     <h2 class="mb-4">Анализ криптовалюты</h2>
 
-    <!-- Flash-сообщения -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div>
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
+    <div id="flash-messages"></div>
 
-    <!-- Форма анализа -->
-    <form method="POST">
-        {{ form.hidden_tag() }}
-        <div class="form-group mb-3">
-            {{ form.symbol.label }}
-            {{ form.symbol(class="form-select") }}
+    <div id="analyze-form">
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                {{ form.symbol.label }}
+                {{ form.symbol(class="form-select", id="symbol") }}
+            </div>
+            <div class="col-md-4 mb-3">
+                {{ form.timeframe.label }}
+                {{ form.timeframe(class="form-select", id="timeframe") }}
+            </div>
+            <div class="col-md-4 mb-3">
+                {{ form.analysis_type.label }}
+                {{ form.analysis_type(class="form-select", id="analysis_type") }}
+            </div>
         </div>
-        <div class="form-group mb-3">
-            {{ form.timeframe.label }}
-            {{ form.timeframe(class="form-select") }}
-        </div>
-        <div class="form-group mb-3">
-            {{ form.analysis_type.label }}
-            {{ form.analysis_type(class="form-select") }}
-        </div>
-        <div class="form-group mt-3">
-            {{ form.submit(class="btn btn-primary") }}
-        </div>
-    </form>
+        <button class="btn btn-primary" id="analyzeBtn" type="button">Анализировать</button>
+    </div>
 
-    <!-- Интерактивный график Plotly -->
-    {% if plot_div %}
-        <div class="mt-4">
-            <h4>График</h4>
-            {{ plot_div|safe }}
-        </div>
-    {% endif %}
+    <div class="mt-4">
+        <h4 id="chart-title" style="display:none">График</h4>
+        <div id="chartContainer"></div>
+    </div>
 
-    <!-- Результаты анализа -->
-    {% if analysis_results %}
-        <div class="mt-4">
-            <h4>Результаты анализа</h4>
-            {% set price_change = analysis_results.price_change %}
-            <table class="table table-bordered">
-                <tr>
-                    <th>Текущая цена</th>
-                    <td>${{ analysis_results.current_price }}</td>
-                </tr>
-                <tr>
-                    <th>Изменение цены</th>
-                    <td class="{{ 'text-success' if price_change >= 0 else 'text-danger' }}">
-                        ${{ price_change }} ({{ analysis_results.percent_change }}%)
-                    </td>
-                </tr>
-                <tr>
-                    <th>Средний объём</th>
-                    <td>{{ analysis_results.average_volume }}</td>
-                </tr>
-                <tr>
-                    <th>Максимум</th>
-                    <td>${{ analysis_results.high }}</td>
-                </tr>
-                <tr>
-                    <th>Минимум</th>
-                    <td>${{ analysis_results.low }}</td>
-                </tr>
-            </table>
-        </div>
-    {% endif %}
+    <div class="mt-4" id="resultContainer" style="display:none">
+        <h4>Результаты анализа</h4>
+        <table class="table table-bordered" id="resultTable"></table>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    if (!analyzeBtn) return;
+
+    analyzeBtn.addEventListener('click', async function() {
+        document.getElementById('flash-messages').innerHTML = '';
+        document.getElementById('chart-title').style.display = "none";
+        if (window.Plotly && document.getElementById('chartContainer')) {
+            Plotly.purge('chartContainer');
+        }
+        document.getElementById('resultContainer').style.display = "none";
+        document.getElementById('resultTable').innerHTML = '';
+
+        const symbol = document.getElementById('symbol').value;
+        const timeframe = document.getElementById('timeframe').value;
+        const analysis_type = document.getElementById('analysis_type').value;
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
+
+        const btn = this;
+        btn.disabled = true;
+        btn.innerText = 'Загрузка...';
+
+        try {
+            const res = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({symbol, timeframe, analysis_type, timezone})
+            });
+            btn.disabled = false;
+            btn.innerText = 'Анализировать';
+            const result = await res.json();
+
+            if (result.error) {
+                document.getElementById('flash-messages').innerHTML =
+                    `<div class="alert alert-danger">${result.error}</div>`;
+                return;
+            }
+
+            // График
+            let data = [];
+            let layout = {};
+            if (analysis_type === 'price') {
+                data = [{
+                    x: result.datetime,
+                    y: result.close,
+                    name: 'Цена',
+                    mode: 'lines'
+                }];
+                layout = {title: 'График цены', xaxis: {title: 'Дата'}, yaxis: {title: 'Цена (USD)'}};
+            } else if (analysis_type === 'trend') {
+                data = [
+                    { x: result.datetime, y: result.close, name: 'Цена', mode: 'lines' },
+                    { x: result.datetime, y: result.ma7, name: 'MA 7', mode: 'lines' },
+                    { x: result.datetime, y: result.ma30, name: 'MA 30', mode: 'lines' }
+                ];
+                layout = {title: 'Анализ тренда', xaxis: {title: 'Дата'}, yaxis: {title: 'Цена (USD)'}};
+            } else if (analysis_type === 'volatility') {
+                data = [{
+                    x: result.datetime,
+                    y: result.volatility,
+                    name: 'Волатильность',
+                    mode: 'lines'
+                }];
+                layout = {title: 'Анализ волатильности', xaxis: {title: 'Дата'}, yaxis: {title: 'Волатильность'}};
+            } else if (analysis_type === 'neural') {
+                data = [
+                    { x: result.datetime, y: result.close, name: 'Историческая цена', mode: 'lines' }
+                ];
+                if (result.predicted_point && result.predicted_point.x && result.predicted_point.y) {
+                    data.push({
+                        x: [result.predicted_point.x],
+                        y: [result.predicted_point.y],
+                        name: 'Прогноз (LSTM)',
+                        mode: 'markers',
+                        marker: {color: 'red', size: 12}
+                    });
+                }
+                layout = {title: 'Нейросетевой прогноз', xaxis: {title: 'Дата'}, yaxis: {title: 'Цена (USD)'}};
+            }
+            if (data.length > 0) {
+                Plotly.newPlot('chartContainer', data, layout);
+                document.getElementById('chart-title').style.display = "";
+            }
+
+            // Таблица результатов
+            if (result.analysis_results) {
+                const res = result.analysis_results;
+                let tableHtml = `
+                    <tr>
+                        <th>Текущая цена</th>
+                        <td>$${res.current_price}</td>
+                    </tr>
+                `;
+                if (analysis_type === 'neural' && typeof res.predicted_price !== 'undefined') {
+                    tableHtml += `
+                    <tr>
+                        <th>Прогноз нейросети</th>
+                        <td>$${res.predicted_price}</td>
+                    </tr>
+                    `;
+                }
+                tableHtml += `
+                    <tr>
+                        <th>Изменение цены</th>
+                        <td class="${res.price_change >= 0 ? 'text-success' : 'text-danger'}">
+                            $${res.price_change} (${res.percent_change}%)
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Средний объём</th>
+                        <td>${res.average_volume}</td>
+                    </tr>
+                    <tr>
+                        <th>Максимум</th>
+                        <td>$${res.high}</td>
+                    </tr>
+                    <tr>
+                        <th>Минимум</th>
+                        <td>$${res.low}</td>
+                    </tr>
+                `;
+                // Показываем тренд и рекомендацию если есть (только для тренда)
+                if ('trend' in res) {
+                    tableHtml += `
+                    <tr>
+                        <th>Тренд</th>
+                        <td>${res.trend}</td>
+                    </tr>
+                    <tr>
+                        <th>Рекомендация</th>
+                        <td>${res.recommendation}</td>
+                    </tr>
+                    `;
+                }
+                document.getElementById('resultTable').innerHTML = tableHtml;
+                document.getElementById('resultContainer').style.display = "";
+            }
+        } catch (err) {
+            document.getElementById('flash-messages').innerHTML =
+                `<div class="alert alert-danger">Ошибка сети или сервера</div>`;
+            btn.disabled = false;
+            btn.innerText = 'Анализировать';
+        }
+    });
+});
+</script>
 {% endblock %}

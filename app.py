@@ -1,10 +1,12 @@
+#app.py
 import os
 from flask import Flask, render_template, url_for, redirect, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, SelectField
-from wtforms.validators import DataRequired, Email, Length, EqualTo
+
+from wtforms import StringField, PasswordField, SubmitField, SelectField, SelectMultipleField
+from wtforms.validators import DataRequired, Email, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
 import ccxt
@@ -19,7 +21,51 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import plotly.graph_objs as go
 import plotly.io as pio
+import pytz
+from telegram_bot.bot import send_trend_notification
 
+
+
+
+
+def nan_to_none(arr):
+    import math
+    return [None if (isinstance(x, float) and math.isnan(x)) else x for x in arr]
+
+def get_trend_and_recommendation(df):
+    """ Определить тренд и дать рекомендацию """
+    ma7 = df['close'].rolling(window=7).mean()
+    ma30 = df['close'].rolling(window=30).mean()
+    last_ma7 = ma7.iloc[-1]
+    last_ma30 = ma30.iloc[-1]
+    prev_ma7 = ma7.iloc[-2] if len(ma7) > 1 else last_ma7
+    prev_ma30 = ma30.iloc[-2] if len(ma30) > 1 else last_ma30
+    last_close = df['close'].iloc[-1]
+    prev_close = df['close'].iloc[-2] if len(df) > 1 else last_close
+
+    # Проверка наличия значений (чтобы не было NaN)
+    if pd.isna(last_ma7) or pd.isna(last_ma30):
+        trend = "Недостаточно данных"
+        recommendation = "Нет рекомендации"
+    elif (last_ma7 > last_ma30) and (last_close > prev_close):
+        trend = "Восходящий"
+        recommendation = "Покупать или держать"
+    elif (last_ma7 < last_ma30) and (last_close < prev_close):
+        trend = "Нисходящий"
+        recommendation = "Продавать или не покупать"
+    elif abs(last_ma7 - last_ma30) / (last_ma30 + 1e-9) < 0.003:
+        trend = "Боковой"
+        recommendation = "Держать"
+    elif last_ma7 > last_ma30:
+        trend = "Восходящий"
+        recommendation = "Держать"
+    elif last_ma7 < last_ma30:
+        trend = "Нисходящий"
+        recommendation = "Держать или продавать"
+    else:
+        trend = "Неопределён"
+        recommendation = "Нет рекомендации"
+    return trend, recommendation
 
 app = Flask(__name__)
 app.config.from_object('config.Config')
@@ -37,6 +83,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False)
     full_name = db.Column(db.String(100))
     last_login = db.Column(db.DateTime)
+    telegram_chat_id = db.Column(db.String(32), nullable=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -68,6 +115,7 @@ class RegistrationForm(FlaskForm):
                                      validators=[DataRequired(), EqualTo('password')])
     role = SelectField('Роль', choices=[('trader', 'Трейдер'), ('analyst', 'Аналитик')])
     full_name = StringField('Полное имя', validators=[DataRequired()])
+    telegram_chat_id = StringField('Telegram Chat ID (по желанию)')
     submit = SubmitField('Зарегистрироваться')
 
 class UserEditForm(FlaskForm):
@@ -75,6 +123,7 @@ class UserEditForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     role = SelectField('Роль', choices=[('admin', 'Admin'), ('trader', 'Trader'), ('analyst', 'Analyst')])
     full_name = StringField('Полное имя', validators=[DataRequired()])
+    telegram_chat_id = StringField('Telegram Chat ID (по желанию)')
     submit = SubmitField('Обновить профиль')
 
 class PasswordChangeForm(FlaskForm):
@@ -100,6 +149,31 @@ class AnalysisForm(FlaskForm):
         ('neural', 'Нейросетевой прогноз')
     ])
     submit = SubmitField('Анализировать')
+
+def validate_symbols(form, field):
+    if not (2 <= len(field.data) <= 4):
+        raise ValidationError('Выберите от 2 до 4 криптовалют для сравнения.')
+
+class CompareForm(FlaskForm):
+    symbols = SelectMultipleField(
+        'Выберите криптовалюты',
+        choices=[
+            ('BTC-USD', 'Bitcoin (BTC)'),
+            ('ETH-USD', 'Ethereum (ETH)'),
+            ('BNB-USD', 'Binance Coin (BNB)'),
+            ('ADA-USD', 'Cardano (ADA)'),
+            ('SOL-USD', 'Solana (SOL)')
+        ],
+        validators=[DataRequired(), validate_symbols]
+    )
+    timeframe = SelectField('Период', choices=[
+        ('1d', '1 день'),
+        ('1w', '1 неделя'),
+        ('1m', '1 месяц'),
+        ('3m', '3 месяца'),
+        ('1y', '1 год')
+    ])
+    submit = SubmitField('Сравнить')
 
 # Загрузчик пользователя
 @login_manager.user_loader
@@ -428,7 +502,6 @@ def analyze():
     plot_div = None
     analysis_results = None
 
-    # Для соответствия тикеров yfinance <-> binance
     symbol_map = {
         'BTC-USD': 'BTC/USDT',
         'ETH-USD': 'ETH/USDT',
@@ -437,7 +510,6 @@ def analyze():
         'SOL-USD': 'SOL/USDT'
     }
 
-    # Подбираем таймфрейм и количество свечей в зависимости от выбранного периода
     timeframe_map = {
         '1d':  ('15m', 96),
         '1w':  ('1h', 168),
@@ -451,7 +523,6 @@ def analyze():
         binance_symbol = symbol_map.get(symbol, symbol.replace('-', '/'))
         timeframe = form.timeframe.data
         analysis_type = form.analysis_type.data
-
         tf, limit = timeframe_map.get(timeframe, ('1h', 168))
 
         try:
@@ -465,6 +536,20 @@ def analyze():
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['close'], mode='lines', name='Цена закрытия'))
                 fig.update_layout(title=f'{symbol} График цены', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
+                close_start = float(data['close'].iloc[0])
+                close_end = float(data['close'].iloc[-1])
+                price_change = close_end - close_start
+                percent_change = ((price_change / close_start) * 100) if close_start else 0
+                analysis_results = {
+                    'current_price': round(close_end, 2),
+                    'price_change': round(price_change, 2),
+                    'percent_change': round(percent_change, 2),
+                    'average_volume': int(data['volume'].mean()),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2)
+                }
+                plot_div = pio.to_html(fig, full_html=False)
+
             elif analysis_type == 'trend':
                 data['MA_7'] = data['close'].rolling(window=7).mean()
                 data['MA_30'] = data['close'].rolling(window=30).mean()
@@ -474,12 +559,56 @@ def analyze():
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['MA_30'], mode='lines', name='30-периодная MA'))
                 fig.update_layout(title=f'{symbol} Анализ тренда', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
+                # Расчёт тренда и рекомендации
+                trend, recommendation = get_trend_and_recommendation(data)
+
+                close_start = float(data['close'].iloc[0])
+                close_end = float(data['close'].iloc[-1])
+                price_change = close_end - close_start
+                percent_change = ((price_change / close_start) * 100) if close_start else 0
+                analysis_results = {
+                    'current_price': round(close_end, 2),
+                    'price_change': round(price_change, 2),
+                    'percent_change': round(percent_change, 2),
+                    'average_volume': int(data['volume'].mean()),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2),
+                    'trend': trend,
+                    'recommendation': recommendation
+                }
+                plot_div = pio.to_html(fig, full_html=False)
+
+                # --- Отправка в Telegram ---
+                if current_user.telegram_chat_id:
+                    send_trend_notification(
+                        symbol=symbol,
+                        trend=trend,
+                        recommendation=recommendation,
+                        price=round(close_end, 2),
+                        chat_id=current_user.telegram_chat_id
+                    )
+                # ---------------------------
+
             elif analysis_type == 'volatility':
                 data['Return'] = data['close'].pct_change()
                 data['Volatility'] = data['Return'].rolling(window=7).std() * (365 ** 0.5)
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data['datetime'], y=data['Volatility'], mode='lines', name='Волатильность'))
                 fig.update_layout(title=f'{symbol} Анализ волатильности', xaxis_title='Дата', yaxis_title='Волатильность', template='plotly_white')
+
+                close_start = float(data['close'].iloc[0])
+                close_end = float(data['close'].iloc[-1])
+                price_change = close_end - close_start
+                percent_change = ((price_change / close_start) * 100) if close_start else 0
+                analysis_results = {
+                    'current_price': round(close_end, 2),
+                    'price_change': round(price_change, 2),
+                    'percent_change': round(percent_change, 2),
+                    'average_volume': int(data['volume'].mean()),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2)
+                }
+                plot_div = pio.to_html(fig, full_html=False)
 
             elif analysis_type == 'neural':
                 df = data[['close']]
@@ -512,18 +641,6 @@ def analyze():
                 loss_fn = nn.MSELoss()
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
                 best_val_loss = float('inf')
-                #временно добавил для проверки
-                val_outputs = model(x_val).squeeze().detach().numpy()
-                val_true = y_val.detach().numpy()
-                # Преобразовать обратно к реальным ценам
-                val_outputs_inv = scaler.inverse_transform(val_outputs.reshape(-1, 1))
-                val_true_inv = scaler.inverse_transform(val_true.reshape(-1, 1))
-                rmse = np.sqrt(np.mean((val_outputs_inv - val_true_inv) ** 2))
-                print(f'RMSE на валидации: {rmse:.2f} USD')
-                # вот до этого момента
-                mape = np.mean(np.abs((val_true_inv - val_outputs_inv) / val_true_inv)) * 100
-                print(f'MAPE: {mape:.2f}%')
-                # вверху ещё MAE
                 early_stop_count = 0
                 model_file = f"model_{symbol.replace('-', '_')}_ccxt.pt"
                 if os.path.exists(model_file):
@@ -537,7 +654,6 @@ def analyze():
                         with torch.no_grad():
                             val_output = model(x_val)
                             val_loss = loss_fn(val_output.squeeze(), y_val)
-
                         if val_loss < best_val_loss:
                             best_val_loss = val_loss
                             early_stop_count = 0
@@ -561,20 +677,6 @@ def analyze():
                 fig.add_hline(y=predicted_price, line_dash="dash", annotation_text=f"Прогноз: {round(predicted_price,2)}", annotation_position="top left")
                 fig.update_layout(title=f'{symbol} — Прогноз цены (LSTM)', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
 
-            if analysis_type != 'neural':
-                close_start = float(data['close'].iloc[0])
-                close_end = float(data['close'].iloc[-1])
-                price_change = close_end - close_start
-                percent_change = ((price_change / close_start) * 100) if close_start else 0
-                analysis_results = {
-                    'current_price': round(close_end, 2),
-                    'price_change': round(price_change, 2),
-                    'percent_change': round(percent_change, 2),
-                    'average_volume': int(data['volume'].mean()),
-                    'high': round(float(data['high'].max()), 2),
-                    'low': round(float(data['low'].min()), 2)
-                }
-            else:
                 current_price = float(df['close'].iloc[-1])
                 price_change = predicted_price - current_price
                 percent_change = ((price_change / current_price) * 100) if current_price else 0
@@ -586,13 +688,13 @@ def analyze():
                     'high': round(float(data['high'].max()), 2),
                     'low': round(float(data['low'].min()), 2)
                 }
-
-            plot_div = pio.to_html(fig, full_html=False)
+                plot_div = pio.to_html(fig, full_html=False)
 
         except Exception as e:
             flash(f'Ошибка при выборке данных с Binance: {str(e)}', 'danger')
 
     return render_template('analyst/analyze.html', form=form, plot_div=plot_div, analysis_results=analysis_results)
+
 
 # Профиль пользователя
 @app.route('/profile', methods=['GET', 'POST'])
@@ -622,6 +724,7 @@ def profile():
             return redirect(url_for('profile'))
 
         form.populate_obj(current_user)
+        current_user.telegram_chat_id = form.telegram_chat_id.data  # TELEGRAM
         db.session.commit()
         flash('Пользователь обновлён успешно', 'success')
         return redirect(url_for('profile'))
@@ -697,13 +800,297 @@ def api_realtime_prices():
     except Exception as e:
         return jsonify({'error': str(e), 'timestamps': [], 'prices': []}), 500
 
-# Получить исторические данные по свечам (для анализа)
-def get_binance_ohlcv(symbol, timeframe='1h', limit=500):
+def get_binance_ohlcv(symbol, timeframe='1h', limit=500, tz=None):
     exchange = ccxt.binance()
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+    if tz is None:
+        tz = pytz.timezone('Europe/Moscow')
+    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC').dt.tz_convert(tz)
     return df
+
+def get_timedelta_for_tf(tf):
+    if tf.endswith('m'):
+        return pd.Timedelta(minutes=int(tf[:-1]))
+    elif tf.endswith('h'):
+        return pd.Timedelta(hours=int(tf[:-1]))
+    elif tf.endswith('d'):
+        return pd.Timedelta(days=int(tf[:-1]))
+    else:
+        return pd.Timedelta(hours=1)
+
+@app.route('/api/analyze', methods=['POST'])
+@login_required
+def api_analyze():
+    if current_user.role != 'analyst':
+        return jsonify({'error': 'Доступ запрещен'}), 403
+
+    data = request.get_json()
+    symbol = data.get('symbol')
+    timeframe = data.get('timeframe')
+    analysis_type = data.get('analysis_type')
+    timezone_name = data.get('timezone', 'Europe/Moscow')
+    try:
+        user_tz = pytz.timezone(timezone_name)
+    except Exception:
+        user_tz = pytz.timezone('Europe/Moscow')
+
+    symbol_map = {
+        'BTC-USD': 'BTC/USDT',
+        'ETH-USD': 'ETH/USDT',
+        'BNB-USD': 'BNB/USDT',
+        'ADA-USD': 'ADA/USDT',
+        'SOL-USD': 'SOL/USDT'
+    }
+    binance_symbol = symbol_map.get(symbol, symbol.replace('-', '/'))
+    timeframe_map = {
+        '1d':  ('15m', 96),
+        '1w':  ('1h', 168),
+        '1m':  ('4h', 180),
+        '3m':  ('1d', 90),
+        '1y':  ('1d', 365),
+    }
+    tf, limit = timeframe_map.get(timeframe, ('1h', 168))
+    try:
+        df = get_binance_ohlcv(binance_symbol, tf, limit, tz=user_tz)
+        if df.empty or len(df) < 5:
+            return jsonify({'error': 'Недостаточно данных'}), 400
+
+        close_start = float(df['close'].iloc[0])
+        close_end = float(df['close'].iloc[-1])
+        price_change = close_end - close_start
+        percent_change = ((price_change / close_start) * 100) if close_start else 0
+        average_volume = int(df['volume'].mean())
+        high = round(float(df['high'].max()), 2)
+        low = round(float(df['low'].min()), 2)
+
+        if analysis_type == 'price':
+            analysis_results = {
+                'current_price': round(close_end, 2),
+                'price_change': round(price_change, 2),
+                'percent_change': round(percent_change, 2),
+                'average_volume': average_volume,
+                'high': high,
+                'low': low
+            }
+            return jsonify({
+                'datetime': [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in df['datetime']],
+                'close': nan_to_none(df['close'].tolist()),
+                'analysis_results': analysis_results
+            })
+
+        elif analysis_type == 'trend':
+            df['MA_7'] = df['close'].rolling(window=7).mean()
+            df['MA_30'] = df['close'].rolling(window=30).mean()
+            trend, recommendation = get_trend_and_recommendation(df)
+            analysis_results = {
+                'current_price': round(close_end, 2),
+                'price_change': round(price_change, 2),
+                'percent_change': round(percent_change, 2),
+                'average_volume': average_volume,
+                'high': high,
+                'low': low,
+                'trend': trend,
+                'recommendation': recommendation
+            }
+
+            # === Отправка уведомления в Telegram ===
+            print(f"Пробую отправить в Telegram chat_id={current_user.telegram_chat_id}")
+            if current_user.telegram_chat_id:
+                try:
+                    send_trend_notification(
+                        symbol=symbol,
+                        trend=trend,
+                        recommendation=recommendation,
+                        price=round(close_end, 2),
+                        chat_id=current_user.telegram_chat_id
+                    )
+                    print("Уведомление отправлено!")
+                except Exception as e:
+                    print(f"Ошибка при отправке Telegram: {e}")
+            else:
+                print("chat_id не указан!")
+            # =======================================
+
+            return jsonify({
+                'datetime': [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in df['datetime']],
+                'close': nan_to_none(df['close'].tolist()),
+                'ma7': nan_to_none(df['MA_7'].tolist()),
+                'ma30': nan_to_none(df['MA_30'].tolist()),
+                'analysis_results': analysis_results
+            })
+
+        elif analysis_type == 'volatility':
+            df['Return'] = df['close'].pct_change()
+            df['Volatility'] = df['Return'].rolling(window=7).std() * (365 ** 0.5)
+            analysis_results = {
+                'current_price': round(close_end, 2),
+                'price_change': round(price_change, 2),
+                'percent_change': round(percent_change, 2),
+                'average_volume': average_volume,
+                'high': high,
+                'low': low
+            }
+            return jsonify({
+                'datetime': [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in df['datetime']],
+                'volatility': nan_to_none(df['Volatility'].tolist()),
+                'analysis_results': analysis_results
+            })
+
+        elif analysis_type == 'neural':
+            scaler = MinMaxScaler()
+            scaled = scaler.fit_transform(df[['close']].values)
+            sequence_length = 60
+            x_all, y_all = [], []
+            for i in range(sequence_length, len(scaled)):
+                x_all.append(scaled[i - sequence_length:i])
+                y_all.append(scaled[i])
+            if len(x_all) < 10:
+                return jsonify({'error': 'Недостаточно данных для обучения модели.'}), 400
+            x_all = torch.tensor(np.array(x_all), dtype=torch.float32).reshape(-1, sequence_length, 1)
+            y_all = torch.tensor(np.array(y_all), dtype=torch.float32)
+
+            val_size = int(len(x_all) * 0.2)
+            x_train, x_val = x_all[:-val_size], x_all[-val_size:]
+            y_train, y_val = y_all[:-val_size], y_all[-val_size:]
+
+            class LSTMModel(nn.Module):
+                def __init__(self, input_size=1, hidden_size=50, output_size=1):
+                    super().__init__()
+                    self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+                    self.fc = nn.Linear(hidden_size, output_size)
+                def forward(self, x):
+                    out, _ = self.lstm(x)
+                    return self.fc(out[:, -1, :])
+            model = LSTMModel()
+            model_file = f"model_{symbol.replace('-', '_')}_ccxt.pt"
+            if os.path.exists(model_file):
+                model.load_state_dict(torch.load(model_file))
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+                loss_fn = nn.MSELoss()
+                best_val_loss = float('inf')
+                early_stop_count = 0
+                for epoch in range(50):
+                    model.train()
+                    output = model(x_train)
+                    loss = loss_fn(output.squeeze(), y_train)
+                    model.eval()
+                    with torch.no_grad():
+                        val_output = model(x_val)
+                        val_loss = loss_fn(val_output.squeeze(), y_val)
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        early_stop_count = 0
+                        torch.save(model.state_dict(), model_file)
+                    else:
+                        early_stop_count += 1
+                        if early_stop_count > 5:
+                            break
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+            last_seq = torch.tensor(scaled[-sequence_length:], dtype=torch.float32).reshape(1, sequence_length, 1)
+            model.eval()
+            with torch.no_grad():
+                pred = model(last_seq).item()
+            predicted_price = scaler.inverse_transform([[pred]])[0][0]
+            last_date = df['datetime'].iloc[-1]
+            pred_x = last_date + get_timedelta_for_tf(tf)
+            pred_x_str = pred_x.strftime('%Y-%m-%d %H:%M:%S')
+
+            analysis_results = {
+                'current_price': round(float(df['close'].iloc[-1]), 2),
+                'predicted_price': round(float(predicted_price), 2),
+                'price_change': round(predicted_price - float(df['close'].iloc[-1]), 2),
+                'percent_change': round(((predicted_price - float(df['close'].iloc[-1])) / float(df['close'].iloc[-1]) * 100), 2),
+                'average_volume': int(df['volume'].mean()),
+                'high': round(float(df['high'].max()), 2),
+                'low': round(float(df['low'].min()), 2)
+            }
+
+            return jsonify({
+                'datetime': [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in df['datetime']],
+                'close': nan_to_none(df['close'].tolist()),
+                'predicted_point': {'x': pred_x_str, 'y': float(predicted_price)},
+                'analysis_results': analysis_results
+            })
+
+        else:
+            return jsonify({'error': 'Неизвестный тип анализа'}), 400
+    except Exception as e:
+        print(f"API_ANALYZE ошибка: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/analyst/compare', methods=['GET', 'POST'])
+@login_required
+def compare():
+    if current_user.role != 'analyst':
+        flash('Доступ запрещен', 'danger')
+        return redirect(url_for('home'))
+
+    form = CompareForm()
+    plot_div = None
+    results = []
+
+    symbol_map = {
+        'BTC-USD': 'BTC/USDT',
+        'ETH-USD': 'ETH/USDT',
+        'BNB-USD': 'BNB/USDT',
+        'ADA-USD': 'ADA/USDT',
+        'SOL-USD': 'SOL/USDT'
+    }
+    timeframe_map = {
+        '1d':  ('15m', 96),
+        '1w':  ('1h', 168),
+        '1m':  ('4h', 180),
+        '3m':  ('1d', 90),
+        '1y':  ('1d', 365),
+    }
+
+    if form.validate_on_submit():
+        selected_symbols = form.symbols.data
+        timeframe = form.timeframe.data
+        tf, limit = timeframe_map.get(timeframe, ('1h', 168))
+
+        data_dict = {}
+        for symbol in selected_symbols:
+            binance_symbol = symbol_map.get(symbol, symbol.replace('-', '/'))
+            try:
+                data = get_binance_ohlcv(binance_symbol, timeframe=tf, limit=limit)
+                if data.empty or len(data) < 5:
+                    flash(f'Недостаточно данных для {symbol}', 'warning')
+                    continue
+                data_dict[symbol] = data
+            except Exception as e:
+                flash(f'Ошибка для {symbol}: {e}', 'danger')
+
+        if data_dict:
+            fig = go.Figure()
+            for symbol, data in data_dict.items():
+                fig.add_trace(go.Scatter(
+                    x=data['datetime'], y=data['close'], mode='lines', name=symbol
+                ))
+                # Для таблицы результатов — текущая цена, мин, макс, изм. %
+                close_start = float(data['close'].iloc[0])
+                close_end = float(data['close'].iloc[-1])
+                percent_change = ((close_end - close_start) / close_start) * 100 if close_start else 0
+                results.append({
+                    'symbol': symbol,
+                    'current_price': round(close_end, 2),
+                    'percent_change': round(percent_change, 2),
+                    'high': round(float(data['high'].max()), 2),
+                    'low': round(float(data['low'].min()), 2),
+                })
+            fig.update_layout(title='Сравнение криптовалют', xaxis_title='Дата', yaxis_title='Цена (USD)', template='plotly_white')
+            plot_div = pio.to_html(fig, full_html=False)
+
+    return render_template('analyst/compare.html', form=form, plot_div=plot_div, results=results)
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
+

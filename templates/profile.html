@@ -58,6 +58,21 @@
                   </div>
                 </div>
 
+                <!-- TELEGRAM CHAT ID -->
+                <div class="col-md-6">
+                  <div class="form-floating">
+                    {{ form.telegram_chat_id(class="form-control", id="telegram_chat_id", placeholder="Ваш Telegram Chat ID") }}
+                    <label for="telegram_chat_id">{{ form.telegram_chat_id.label.text }}</label>
+                  </div>
+                  <div class="form-text text-muted">
+                    Укажите свой <b>Telegram Chat ID</b> для получения уведомлений.<br>
+                    <small>Как получить? Напишите любому боту <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> и скопируйте свой <b>ID</b>.</small>
+                  </div>
+                  {% for error in form.telegram_chat_id.errors %}
+                    <small class="text-danger">{{ error }}</small>
+                  {% endfor %}
+                </div>
+
                 <div class="col-12 mt-3">
                   {{ form.submit(class="btn btn-primary px-4") }}
                 </div>
@@ -151,7 +166,6 @@
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   }
 
-  /* Специальные стили для красной кнопки */
   .btn-danger {
     background-color: #dc3545;
     border-color: #dc3545;

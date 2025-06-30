@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Сравнение криптовалют{% endblock %}
+{% block content %}
+<form method="post">
+    {{ form.hidden_tag() }}
+    <div class="row">
+        <div class="col-md-8 mb-3">
+            {{ form.symbols.label }}
+            {{ form.symbols(class="form-select", multiple=True, size=5) }}
+            {% for err in form.symbols.errors %}
+                <div class="form-text text-danger">{{ err }}</div>
+            {% endfor %}
+            <small class="form-text text-muted">Можно выбрать от 2 до 4 криптовалют</small>
+        </div>
+        <div class="col-md-4 mb-3">
+            {{ form.timeframe.label }}
+            {{ form.timeframe(class="form-select") }}
+        </div>
+    </div>
+    <button class="btn btn-primary">{{ form.submit.label }}</button>
+</form>
+    {% if plot_div %}
+    <div class="mt-4">
+        {{ plot_div | safe }}
+    </div>
+    {% endif %}
+    {% if results %}
+    <div class="mt-4">
+        <h4>Ключевые показатели</h4>
+        <table class="table table-bordered">
+            <tr>
+                <th>Символ</th>
+                <th>Текущая цена</th>
+                <th>Изм. (%)</th>
+                <th>Макс</th>
+                <th>Мин</th>
+            </tr>
+            {% for res in results %}
+            <tr>
+                <td>{{ res.symbol }}</td>
+                <td>${{ res.current_price }}</td>
+                <td>{{ res.percent_change }}%</td>
+                <td>${{ res.high }}</td>
+                <td>${{ res.low }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

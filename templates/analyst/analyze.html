@@ -40,7 +40,30 @@
 
 {% block scripts %}
 <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 <script>
+let socket = io();
+let chartSymbol = null;
+let priceTraceId = 0;
+
+function subscribeRealtime(symbol) {
+    chartSymbol = symbol;
+    priceTraceId = 0; // Обнуляем trace при каждом новом графике
+    socket.emit('subscribe_price', {symbol: symbol});
+}
+
+socket.on('price_update', function(data) {
+    if (chartSymbol === data.symbol && document.getElementById('chartContainer').children.length > 0) {
+        let price = data.price;
+        let ts = new Date(data.timestamp);
+        // Добавляем точку к первому trace (0) — "Цена"
+        Plotly.extendTraces('chartContainer', {
+            y: [[price]],
+            x: [[ts]]
+        }, [priceTraceId]);
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     const analyzeBtn = document.getElementById('analyzeBtn');
     if (!analyzeBtn) return;
@@ -82,6 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // График
             let data = [];
             let layout = {};
+            priceTraceId = 0;
             if (analysis_type === 'price') {
                 data = [{
                     x: result.datetime,
@@ -123,6 +147,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.length > 0) {
                 Plotly.newPlot('chartContainer', data, layout);
                 document.getElementById('chart-title').style.display = "";
+
+                // Подключаем сокет только если price (реальное время)
+                if (analysis_type === 'price') {
+                    subscribeRealtime(symbol);
+                } else {
+                    chartSymbol = null; // отключаем автообновление для других графиков
+                }
             }
 
             // Таблица результатов
@@ -162,7 +193,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>$${res.low}</td>
                     </tr>
                 `;
-                // Показываем тренд и рекомендацию если есть (только для тренда)
                 if ('trend' in res) {
                     tableHtml += `
                     <tr>

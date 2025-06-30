@@ -1,5 +1,7 @@
 #app.py
 import os
+import threading
+import time
 from flask import Flask, render_template, url_for, redirect, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -23,8 +25,9 @@ import plotly.graph_objs as go
 import plotly.io as pio
 import pytz
 from telegram_bot.bot import send_trend_notification
-
-
+from flask_socketio import SocketIO, emit
+from dotenv import load_dotenv
+load_dotenv()
 
 
 
@@ -69,6 +72,7 @@ def get_trend_and_recommendation(df):
 
 app = Flask(__name__)
 app.config.from_object('config.Config')
+socketio = SocketIO(app)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -586,6 +590,7 @@ def analyze():
                         recommendation=recommendation,
                         price=round(close_end, 2),
                         chat_id=current_user.telegram_chat_id
+
                     )
                 # ---------------------------
 
@@ -903,7 +908,8 @@ def api_analyze():
                         trend=trend,
                         recommendation=recommendation,
                         price=round(close_end, 2),
-                        chat_id=current_user.telegram_chat_id
+                        chat_id=current_user.telegram_chat_id,
+                        period = timeframe
                     )
                     print("Уведомление отправлено!")
                 except Exception as e:
@@ -1090,7 +1096,37 @@ def compare():
     return render_template('analyst/compare.html', form=form, plot_div=plot_div, results=results)
 
 
+background_threads = {}
+
+def fetch_and_broadcast_price(symbol):
+    exchange = ccxt.binance()
+    binance_symbol = symbol.replace('-', '/')
+    while True:
+        try:
+            ticker = exchange.fetch_ticker(binance_symbol)
+            price = float(ticker.get('last', 0))
+            timestamp = int(ticker.get('timestamp', time.time()*1000))
+            socketio.emit('price_update', {
+                'symbol': symbol,
+                'price': price,
+                'timestamp': timestamp
+            }, broadcast=True)
+        except Exception as e:
+            print("Ошибка при получении цены:", e)
+        time.sleep(10)  # Каждые 10 сек обновлять
+
+@socketio.on('subscribe_price')
+def handle_subscribe_price(data):
+    symbol = data.get('symbol', 'BTC-USD')
+    if symbol not in background_threads:
+        print(f"Запуск потока SocketIO для {symbol}")
+        thread = threading.Thread(target=fetch_and_broadcast_price, args=(symbol,), daemon=True)
+        background_threads[symbol] = thread
+        thread.start()
+    emit('subscribed', {'symbol': symbol})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    import eventlet
+    import eventlet.wsgi
+    socketio.run(app, debug=True)
 

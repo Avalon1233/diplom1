@@ -6,6 +6,8 @@ from flask import Flask, render_template, url_for, redirect, request, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
+from flask_migrate import Migrate
+
 
 from wtforms import StringField, PasswordField, SubmitField, SelectField, SelectMultipleField
 from wtforms.validators import DataRequired, Email, Length, EqualTo, ValidationError
@@ -24,10 +26,12 @@ from sklearn.preprocessing import MinMaxScaler
 import plotly.graph_objs as go
 import plotly.io as pio
 import pytz
-from telegram_bot.bot import send_trend_notification
+
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 load_dotenv()
+from telegram_bot.notify import send_trend_notification
+
 
 
 
@@ -72,9 +76,12 @@ def get_trend_and_recommendation(df):
 
 app = Flask(__name__)
 app.config.from_object('config.Config')
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 socketio = SocketIO(app)
 
-db = SQLAlchemy(app)
+
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
@@ -88,12 +95,25 @@ class User(UserMixin, db.Model):
     full_name = db.Column(db.String(100))
     last_login = db.Column(db.DateTime)
     telegram_chat_id = db.Column(db.String(32), nullable=True)
+    is_tg_subscribed = db.Column(db.Boolean, default=False)
+    tg_symbol = db.Column(db.String(20), nullable=True)
+    tg_ma = db.Column(db.String(10), nullable=True)
+    tg_period = db.Column(db.String(5), nullable=True, default='1d')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class PriceAlert(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.String, nullable=False)
+    symbol = db.Column(db.String, nullable=False)
+    condition = db.Column(db.String, nullable=False)  # ">" или "<"
+    target_price = db.Column(db.Float, nullable=False)
+    is_triggered = db.Column(db.Boolean, default=False)
 
 class CryptoData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -104,6 +124,7 @@ class CryptoData(db.Model):
     low = db.Column(db.Float)
     close = db.Column(db.Float)
     volume = db.Column(db.Float)
+
 
 # Формы
 class LoginForm(FlaskForm):
@@ -1126,7 +1147,6 @@ def handle_subscribe_price(data):
     emit('subscribed', {'symbol': symbol})
 
 if __name__ == '__main__':
-    import eventlet
-    import eventlet.wsgi
+
     socketio.run(app, debug=True)
 

@@ -127,8 +127,8 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📈 Актуальные цены", callback_data='prices')],
         [InlineKeyboardButton("👤 Личный кабинет", callback_data='profile')],
         [InlineKeyboardButton("ℹ️ Инструкция", callback_data='help')],
-        [InlineKeyboardButton("👨‍💻 О боте", callback_data='about')],
-        [InlineKeyboardButton("📌 Алерты по цене", callback_data='alerts')]
+        [InlineKeyboardButton("📌 Алерты по цене", callback_data='alerts')],
+        [InlineKeyboardButton("👨‍💻 О боте", callback_data='about')]
     ]
     try:
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -467,19 +467,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['awaiting_alert_price'] = False
 
 def price_alert_daemon():
-    exchange = ccxt.binance()
+    exchange = get_exchange()                 #get_exchange не реализована функция
+
     while True:
         with app.app_context():
-
             alerts = PriceAlert.query.filter_by(is_triggered=False).all()
+            symbols = sorted({a.symbol for a in alerts})
+            last_prices = {}
+            for s in symbols:
+                try:
+                    last_prices[s] = exchange.fetch_ticker(s)['last']
+                except Exception as e:
+                    logger.error(f"fetch_ticker error {s}: {e}")
+
             for alert in alerts:
                 try:
-                    ticker = exchange.fetch_ticker(alert.symbol)
-                    last_price = ticker['last']
+                    last_price = last_prices.get(alert.symbol)
+                    if last_price is None:
+                        continue
                     if (alert.condition == ">" and last_price > alert.target_price) or \
                        (alert.condition == "<" and last_price < alert.target_price):
-                        from notify import send_trend_notification
-                        send_trend_notification(
+                        notify_from_module(
                             symbol=alert.symbol,
                             trend="Алерт по цене",
                             recommendation=f"Достигнуто условие {alert.condition} {alert.target_price}",
@@ -490,7 +498,9 @@ def price_alert_daemon():
                         db.session.commit()
                 except Exception as e:
                     logger.error(f"Ошибка проверки алертов: {e}")
-        time.sleep(60)  # проверка каждую минуту
+            db.session.remove()
+        time.sleep(60)
+
 
 
 

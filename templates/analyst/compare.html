@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Сравнение криптовалют{% endblock %}
 {% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Сравнение криптовалют</h2>
 <form method="post">
     {{ form.hidden_tag() }}
     <div class="row">
@@ -19,6 +21,7 @@
     </div>
     <button class="btn btn-primary">{{ form.submit.label }}</button>
 </form>
+
     {% if plot_div %}
     <div class="mt-4">
         {{ plot_div | safe }}

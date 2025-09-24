@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Обзор Рынка{% endblock %}
+
+{% block head %}
+    {{ super() }}
+    <style>
+        .market-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            grid-template-rows: auto 1fr auto;
+            gap: 1rem;
+            height: calc(100vh - 120px);
+        }
+        .grid-item {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .coin-list-panel { grid-column: 1; grid-row: 1 / 4; }
+        .coin-info-panel { grid-column: 2; grid-row: 1; }
+        .chart-panel { grid-column: 2; grid-row: 2; }
+        .trades-panel { grid-column: 2; grid-row: 3; }
+        .order-form-panel { grid-column: 3; grid-row: 1 / 4; }
+
+        .scrollable-content {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        /* Custom scrollbar */
+        .scrollable-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollable-content::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+        .scrollable-content::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 3px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 market-grid text-light"
+     data-api-coins="{{ url_for('market.get_coins') }}"
+     data-api-watchlist="{{ url_for('market.get_watchlist') }}"
+     data-api-toggle-watchlist="{{ url_for('market.toggle_watchlist') }}"
+     data-api-coin-details="{{ url_for('market.get_coin_details', coin_id='__COIN_ID__') }}">
+
+    <!-- Coin List Panel -->
+    <div class="grid-item coin-list-panel">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Рынки</h5>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary active" id="all-coins-tab">Все</button>
+                <button type="button" class="btn btn-outline-secondary" id="watchlist-tab">★</button>
+            </div>
+        </div>
+        <input type="text" id="search-input" class="form-control form-control-sm bg-dark text-light border-secondary mb-3" placeholder="Поиск...">
+        <div class="scrollable-content">
+            <ul class="list-group list-group-flush" id="coin-list">
+                <!-- Coin items will be loaded here -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Coin Info Panel -->
+    <div class="grid-item coin-info-panel">
+        <div class="d-flex align-items-center">
+            <img src="" id="selected-coin-icon" class="me-3" style="width: 40px; height: 40px;">
+            <div>
+                <h4 class="mb-0 d-inline" id="selected-coin-name"></h4>
+                <span id="selected-coin-symbol" class="text-muted"></span>
+            </div>
+            <button id="toggle-watchlist-btn" class="btn btn-outline-warning btn-sm ms-3">★</button>
+            <div class="ms-auto text-end">
+                <h4 id="selected-coin-price"></h4>
+                <div id="selected-coin-change" class=""></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Panel -->
+    <div class="grid-item chart-panel">
+        <canvas id="priceChart"></canvas>
+    </div>
+
+    <!-- Trades/News Panel -->
+    <div class="grid-item trades-panel">
+        <ul class="nav nav-tabs nav-fill" id="info-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-content" type="button">Стакан ордеров</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="news-tab" data-bs-toggle="tab" data-bs-target="#news-content" type="button">Информация</button>
+            </li>
+        </ul>
+        <div class="tab-content mt-3 scrollable-content">
+            <div class="tab-pane fade show active" id="orders-content">
+                <!-- Order book content -->
+            </div>
+            <div class="tab-pane fade" id="news-content">
+                <!-- News/Info content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Form Panel -->
+    <div class="grid-item order-form-panel">
+        <h5>Торговля (в разработке)</h5>
+        <!-- Future trading form -->
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/market_new.js') }}"></script>
+{% endblock %}

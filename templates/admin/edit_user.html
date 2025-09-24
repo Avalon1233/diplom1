@@ -8,7 +8,7 @@
 
     <div class="card">
         <div class="card-body">
-            <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}">
+            <form method="POST" action="{{ url_for('admin.edit_user', user_id=user.id) }}">
                 {{ form.hidden_tag() }}
 
                 <div class="row mb-3">
@@ -50,7 +50,7 @@
                 </div>
 
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                    <a href="{{ url_for('admin_users') }}" class="btn btn-secondary me-md-2">Cancel</a>
+                    <a href="{{ url_for('admin.users') }}" class="btn btn-secondary me-md-2">Cancel</a>
                     <button type="submit" class="btn btn-primary">Update User</button>
                 </div>
             </form>

@@ -1,0 +1,11 @@
+build:
+  docker:
+    web: Dockerfile
+    worker: Dockerfile
+run:
+  web: gunicorn --bind 0.0.0.0:$PORT --workers 4 --worker-class gevent --worker-connections 1000 --max-requests 1000 --timeout 30 --log-level info run:app
+  worker: celery -A run.celery worker --loglevel=info
+release:
+  image: web
+  command:
+    - flask db upgrade

@@ -123,3 +123,171 @@ footer {
 .mb-0 {
     margin-bottom: 0 !important;
 }
+
+/* ---------- Trader Dashboard Styles ---------- */
+.crypto-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    border-left: 4px solid transparent;
+}
+
+.crypto-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 2rem rgba(33, 40, 50, 0.2) !important;
+}
+
+.crypto-card .card-body {
+    padding: 1.5rem;
+}
+
+.crypto-icon i {
+    font-size: 1.5rem;
+}
+
+.text-gray-800 {
+    color: #5a5c69 !important;
+}
+
+.text-xs {
+    font-size: 0.75rem;
+}
+
+.font-weight-bold {
+    font-weight: 700 !important;
+}
+
+/* Live indicator animation */
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+.blink {
+    animation: blink 2s infinite;
+}
+
+/* Progress bars for crypto cards */
+.progress {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Table enhancements */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+    cursor: pointer;
+}
+
+.crypto-row {
+    transition: background-color 0.2s ease;
+}
+
+/* Badge improvements */
+.badge {
+    font-weight: 500;
+    border-radius: 0.375rem;
+}
+
+.bg-opacity-10 {
+    --bs-bg-opacity: 0.1;
+}
+
+/* Button group improvements */
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 0.2rem;
+}
+
+/* Search input styling */
+.input-group .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.input-group-text {
+    background-color: #f8f9fa;
+    border-color: #ced4da;
+}
+
+/* Modal improvements */
+.modal-content {
+    border: none;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 2rem rgba(33, 40, 50, 0.3);
+}
+
+.modal-header {
+    border-bottom: 1px solid #e9ecef;
+    padding: 1.5rem;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    border-top: 1px solid #e9ecef;
+    padding: 1rem 1.5rem;
+}
+
+/* Card header improvements */
+.card-header.bg-white {
+    background-color: #fff !important;
+}
+
+/* Dropdown improvements */
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 0.25rem 1rem rgba(33, 40, 50, 0.15);
+    border-radius: 0.375rem;
+}
+
+.dropdown-item {
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-item:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .crypto-card .card-body {
+        padding: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .btn-group-sm > .btn {
+        padding: 0.125rem 0.25rem;
+        font-size: 0.75rem;
+    }
+    
+    .input-group {
+        width: 100% !important;
+        margin-bottom: 1rem;
+    }
+}
+
+/* Color variations for different crypto types */
+.crypto-card[data-crypto="BTC"] {
+    border-left-color: #f7931a;
+}
+
+.crypto-card[data-crypto="ETH"] {
+    border-left-color: #627eea;
+}
+
+.crypto-card[data-crypto="BNB"] {
+    border-left-color: #f3ba2f;
+}
+
+.crypto-card[data-crypto="ADA"] {
+    border-left-color: #0033ad;
+}
+
+.crypto-card[data-crypto="SOL"] {
+    border-left-color: #9945ff;
+}

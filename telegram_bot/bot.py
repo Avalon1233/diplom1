@@ -1,4 +1,3 @@
-
 import os
 import requests
 import logging
@@ -11,27 +10,26 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 )
 from telegram.error import BadRequest
 import ccxt
 import pandas as pd
-from threading import Thread
-import time
 from config import Config
 from html import escape
-
-
 from app import app, db, User, PriceAlert
 from notify import send_trend_notification as notify_from_module
-from telegram.ext import MessageHandler, filters
-
+from threading import Thread
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# --- Глобальный экземпляр Application ---
+application = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).build()
+# -------------------------------------
 
 SYMBOLS = [
     ("BTC/USDT", "Биткоин (BTC)"),
@@ -68,7 +66,6 @@ def subscribe(chat_id, symbol, ma):
     db.session.commit()
     logger.info(f"Пользователь {chat_id} подписан: {symbol}, {ma}")
 
-
 def unsubscribe(chat_id):
     user = User.query.filter_by(telegram_chat_id=str(chat_id)).first()
     if not user:
@@ -77,7 +74,6 @@ def unsubscribe(chat_id):
     user.is_tg_subscribed = False
     db.session.commit()
     logger.info(f"Пользователь {chat_id} отписан")
-
 
 def get_all_subscribers():
     return User.query.filter_by(is_tg_subscribed=True).all()
@@ -404,43 +400,104 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Для справки напишите /help.'
     )
 
-def send_trend_notification_local(symbol, trend, recommendation, price, chat_id, period='1d', ma_choice="7,30"):
-    token = Config.TELEGRAM_BOT_TOKEN
-    if not token:
-        logger.error("TELEGRAM_BOT_TOKEN не задан")
-        return
-
+async def send_trend_notification_local(symbol, trend, recommendation, price, chat_id, period='1d', ma_choice="7,30"):
     name = dict(SYMBOLS).get(symbol, symbol)
-    ma_label = f"MA{ma_choice.replace(',', '/MA')}"
-    text = (
-        f"📊 Тренд по {name} ({ma_label}):\n"
-        f"Цена: ${price}\n"
-        f"Тренд: {trend}\n"
-        f"Рекомендация: {recommendation}"
+    period_text = dict(PERIODS).get(period, period)
+    ma_label = f"MA{ma_choice.replace(',', '/')}"
+
+    message = (
+        f"🔔 <b>Уведомление по подписке</b>\n"
+        f"<b>{escape(name)}</b> ({escape(period_text)}, {escape(ma_label)})\n"
+        f"<b>Тренд:</b> {escape(trend)}\n"
+        f"<b>Рекомендация:</b> {escape(recommendation)}\n"
+        f"<b>Цена:</b> ${price}"
+    )
+    try:
+        await application.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML')
+        logger.info(f"Отправлено уведомление для {chat_id} по {symbol}")
+    except Exception as e:
+        logger.error(f"Не удалось отправить уведомление для {chat_id}: {e}")
+
+async def notification_daemon():
+    """Асинхронный демон для отправки уведомлений по подписке."""
+    while True:
+        logger.info("Проверка подписок для уведомлений...")
+        try:
+            def _get_subscribers_in_context():
+                with app.app_context():
+                    return get_all_subscribers()
+
+            subscribers = await asyncio.to_thread(_get_subscribers_in_context)
+
+            for user in subscribers:
+                trend, recommendation, price, _, _, _ = await asyncio.to_thread(
+                    get_trend, user.tg_symbol, user.tg_period, user.tg_ma
+                )
+                if 'Покупать' in recommendation or 'Продавать' in recommendation:
+                    await send_trend_notification_local(
+                        user.tg_symbol, trend, recommendation, price, user.telegram_chat_id, user.tg_period, user.tg_ma
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка в демоне уведомлений: {e}")
+        await asyncio.sleep(3600)  # 1 час
+
+async def run_async_tasks():
+    """Запускает все асинхронные фоновые задачи."""
+    await asyncio.gather(
+        notification_daemon(),
+        price_alert_daemon()
     )
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        logger.info(f"Уведомление отправлено пользователю {chat_id}")
-    except Exception as e:
-        logger.error(f"Ошибка отправки уведомления {chat_id}: {e}")
+async def price_alert_daemon():
+    """Асинхронный демон для проверки ценовых алертов."""
+    while True:
+        try:
+            def _get_alerts_and_commit_in_context():
+                with app.app_context():
+                    alerts = PriceAlert.query.filter_by(is_triggered=False).all()
+                    if not alerts:
+                        return None, None
 
-def notification_daemon():
-    with app.app_context():
-        while True:
-            try:
-                for user in get_all_subscribers():
-                    symbol = user.tg_symbol
-                    ma_choice = user.tg_ma
-                    chat_id = user.telegram_chat_id
-                    trend, recommendation, price, _, _, _ = get_trend(symbol, user.tg_period, ma_choice)
-                    send_trend_notification_local(symbol, trend, recommendation, price, chat_id, user.tg_period, ma_choice)
-            except Exception as e:
-                    logger.error(f"Не удалось отправить уведомление {chat_id}: {e}")
-            time.sleep(6*60*60)  # каждые 6 часов
+                    symbols = list(set([a.symbol for a in alerts]))
+                    exchange = ccxt.binance()
+                    # Этот вызов сам по себе является блокирующим I/O, поэтому он внутри потока
+                    tickers = exchange.fetch_tickers(symbols)
+
+                    triggered_alerts = []
+                    for alert in alerts:
+                        current_price = tickers.get(alert.symbol, {}).get('last')
+                        if not current_price:
+                            continue
+
+                        triggered = False
+                        if alert.condition == '>' and current_price > alert.target_price:
+                            triggered = True
+                        elif alert.condition == '<' and current_price < alert.target_price:
+                            triggered = True
+
+                        if triggered:
+                            alert.is_triggered = True
+                            triggered_alerts.append((alert, current_price))
+
+                    if triggered_alerts:
+                        db.session.commit()
+                    return triggered_alerts, None
+
+            triggered_alerts, error = await asyncio.to_thread(_get_alerts_and_commit_in_context)
+
+            if triggered_alerts:
+                for alert, current_price in triggered_alerts:
+                    message = (
+                        f"🔔 Сработал алерт по {escape(alert.symbol)}!\n"
+                        f"Условие: цена {escape(alert.condition)} ${alert.target_price}\n"
+                        f"Текущая цена: <b>${current_price}</b>"
+                    )
+                    await application.bot.send_message(chat_id=alert.chat_id, text=message, parse_mode='HTML')
+
+        except Exception as e:
+            logger.error(f"Ошибка в демоне алертов: {e}")
+        await asyncio.sleep(60)  # 1 минута
+
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('awaiting_alert_price'):
@@ -466,64 +523,28 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка: используйте формат '> 70000' или '< 2000'.")
         context.user_data['awaiting_alert_price'] = False
 
-def price_alert_daemon():
-    exchange = get_exchange()                 #get_exchange не реализована функция
-
-    while True:
-        with app.app_context():
-            alerts = PriceAlert.query.filter_by(is_triggered=False).all()
-            symbols = sorted({a.symbol for a in alerts})
-            last_prices = {}
-            for s in symbols:
-                try:
-                    last_prices[s] = exchange.fetch_ticker(s)['last']
-                except Exception as e:
-                    logger.error(f"fetch_ticker error {s}: {e}")
-
-            for alert in alerts:
-                try:
-                    last_price = last_prices.get(alert.symbol)
-                    if last_price is None:
-                        continue
-                    if (alert.condition == ">" and last_price > alert.target_price) or \
-                       (alert.condition == "<" and last_price < alert.target_price):
-                        notify_from_module(
-                            symbol=alert.symbol,
-                            trend="Алерт по цене",
-                            recommendation=f"Достигнуто условие {alert.condition} {alert.target_price}",
-                            price=last_price,
-                            chat_id=alert.chat_id
-                        )
-                        alert.is_triggered = True
-                        db.session.commit()
-                except Exception as e:
-                    logger.error(f"Ошибка проверки алертов: {e}")
-            db.session.remove()
-        time.sleep(60)
-
-
-
+async def run_async_tasks():
+    """Запускает все асинхронные фоновые задачи."""
+    await asyncio.gather(
+        notification_daemon(),
+        price_alert_daemon()
+    )
 
 def main():
-    if not Config.TELEGRAM_BOT_TOKEN:
-        logger.error("Не задан TELEGRAM_BOT_TOKEN в окружении.")
-        return
+    """Основная функция для запуска бота и фоновых задач."""
+    # Добавление обработчиков
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CallbackQueryHandler(menu_callback))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    # Запуск демона уведомлений
-    Thread(target=notification_daemon, daemon=True).start()
-    Thread(target=price_alert_daemon, daemon=True).start()
+    # Запускаем асинхронные задачи в отдельном потоке
+    async_thread = Thread(target=lambda: asyncio.run(run_async_tasks()), daemon=True)
+    async_thread.start()
 
-    telegram_app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).build()
+    logger.info("Бот запущен и готов к работе...")
+    # run_polling() является блокирующим и запускает свой собственный цикл asyncio
+    application.run_polling()
 
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    telegram_app.add_handler(CommandHandler('start', start))
-    telegram_app.add_handler(CommandHandler('menu', show_menu))
-    telegram_app.add_handler(CommandHandler('help', help_command))
-    telegram_app.add_handler(CallbackQueryHandler(menu_callback))
-
-    logger.info("Бот запущен.")
-    telegram_app.run_polling()
 
 if __name__ == '__main__':
-    with app.app_context():
-        main()
+    main()

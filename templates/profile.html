@@ -87,7 +87,7 @@
             <h3 class="h5 mb-4 text-primary">
               <i class="bi bi-shield-lock me-2"></i>Сменить пароль
             </h3>
-            <form method="POST" action="{{ url_for('change_password') }}">
+            <form method="POST" action="{{ url_for('main.change_password') }}">
               {{ password_form.hidden_tag() }}
 
               <div class="row g-3">

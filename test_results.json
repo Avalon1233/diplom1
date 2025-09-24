@@ -1,0 +1,68 @@
+[
+  {
+    "test": "Basic Connectivity",
+    "status": "PASS",
+    "details": "Status: 200",
+    "timestamp": "2025-09-24T03:47:38.163743"
+  },
+  {
+    "test": "Login Page",
+    "status": "PASS",
+    "details": "Login page accessible",
+    "timestamp": "2025-09-24T03:47:38.170445"
+  },
+  {
+    "test": "Registration Page",
+    "status": "PASS",
+    "details": "Registration page accessible",
+    "timestamp": "2025-09-24T03:47:38.187415"
+  },
+  {
+    "test": "Login admin1",
+    "status": "FAIL",
+    "details": "Status: 200",
+    "timestamp": "2025-09-24T03:47:38.200343"
+  },
+  {
+    "test": "Login trader1",
+    "status": "FAIL",
+    "details": "Status: 429",
+    "timestamp": "2025-09-24T03:47:38.310501"
+  },
+  {
+    "test": "Login analyst1",
+    "status": "FAIL",
+    "details": "Status: 429",
+    "timestamp": "2025-09-24T03:47:38.449982"
+  },
+  {
+    "test": "Market Data API",
+    "status": "FAIL",
+    "details": "Status: 429",
+    "timestamp": "2025-09-24T03:47:38.496784"
+  },
+  {
+    "test": "Crypto Prices API",
+    "status": "FAIL",
+    "details": "Status: 404",
+    "timestamp": "2025-09-24T03:47:38.501623"
+  },
+  {
+    "test": "Health Check API",
+    "status": "PASS",
+    "details": "Status: healthy",
+    "timestamp": "2025-09-24T03:47:38.506620"
+  },
+  {
+    "test": "CSS Files",
+    "status": "PASS",
+    "details": "Styles loaded successfully",
+    "timestamp": "2025-09-24T03:47:38.545228"
+  },
+  {
+    "test": "JavaScript Files",
+    "status": "PASS",
+    "details": "Scripts loaded successfully",
+    "timestamp": "2025-09-24T03:47:38.551044"
+  }
+]

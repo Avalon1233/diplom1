@@ -24,7 +24,7 @@
           <h3>Регистрация</h3>
         </div>
         <div class="card-body">
-          <form method="POST" action="{{ url_for('register') }}">
+          <form method="POST" action="{{ url_for('auth.register') }}">
             {{ form.hidden_tag() }}
 
             <div class="mb-3">
@@ -81,7 +81,7 @@
           </form>
 
           <div class="mt-3 text-center">
-            <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+            <p>Уже есть аккаунт? <a href="{{ url_for('auth.login') }}">Войти</a></p>
           </div>
         </div>
       </div>

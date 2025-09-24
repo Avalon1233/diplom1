@@ -1,38 +1,184 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15
-    container_name: my_postgres
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: crypto_postgres
     restart: unless-stopped
     environment:
+      POSTGRES_DB: crypto_platform
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: homyak109
-      POSTGRES_DB: database
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Redis Cache and Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: crypto_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Main Flask Application
   web:
     build:
       context: .
-      dockerfile: Dockerfile        # ваш Dockerfile (копирует app.py, config.py и т.п.)
-    container_name: diplom1_app
+      dockerfile: dockerfile
+      target: production
+    container_name: crypto_web
     restart: unless-stopped
-    depends_on:
-      - db
-    environment:
-      # Обращаемся к БД через DNS-имя сервиса "db"
-      DATABASE_URL: "postgresql://postgres:homyak109@db:5432/database"
-      FLASK_ENV: development       # чтобы был включён DEBUG-режим
     ports:
-      - "5000:5000"                 # если Flask слушает 0.0.0.0:5000
+      - "${WEB_PORT:-5000}:5000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/crypto_platform
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - SECRET_KEY=${SECRET_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - FLASK_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./:/app                     # если хотите монтировать локальный код внутрь контейнера
+      - app_logs:/app/logs
+      - app_models:/app/models
+      - app_backups:/app/backups
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Celery Worker for Background Tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: production
+    container_name: crypto_celery_worker
+    restart: unless-stopped
+    command: celery -A app.tasks.celery worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/crypto_platform
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - SECRET_KEY=${SECRET_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+      - FLASK_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_logs:/app/logs
+      - app_models:/app/models
+    networks:
+      - backend
+
+  # Celery Beat Scheduler
+  celery-beat:
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: production
+    container_name: crypto_celery_beat
+    restart: unless-stopped
+    command: celery -A app.tasks.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/crypto_platform
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - SECRET_KEY=${SECRET_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+      - FLASK_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_logs:/app/logs
+      - celerybeat_schedule:/app/celerybeat-schedule
+    networks:
+      - backend
+
+  # Monitoring with Flower (Celery monitoring)
+  flower:
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: production
+    container_name: crypto_flower
+    restart: unless-stopped
+    command: celery -A app.tasks.celery flower --port=5555
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+    networks:
+      - backend
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  app_logs:
+    driver: local
+  app_models:
+    driver: local
+  app_backups:
+    driver: local
+  celerybeat_schedule:
+    driver: local
 
 networks:
   backend:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -3,85 +3,1245 @@
 {% block title %}Крипто Рынок – Трейдер{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Обзор крипторынка</h2>
-    <div>
-      <span class="text-muted me-2" title="{{ now.strftime('%Y-%m-%d %H:%M:%S') }}">
-        Последнее обновление: {{ now.strftime('%H:%M:%S') }}
-      </span>
-      <a href="{{ url_for('trader_market') }}" title="Обновить">
-        <i class="bi bi-arrow-clockwise"></i>
-      </a>
-    </div>
-  </div>
+<!-- React Market Container -->
+<div id="react-market" class="container-fluid"></div>
 
-  <div class="card">
-    <div class="card-header">
-      <div class="row">
-        <div class="col-md-6"><h5>Цены на рынке</h5></div>
-        <div class="col-md-6">
-          <div class="input-group">
-            <input id="searchInput" type="text" class="form-control" placeholder="Поиск...">
-            <button id="searchButton" class="btn btn-outline-secondary">
-              <i class="bi bi-search"></i>
-            </button>
-          </div>
+<!-- Fallback content for when React is not available -->
+<noscript>
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0 text-gray-800">
+                        <i class="bi bi-bar-chart-line text-primary"></i>
+                        Крипто Рынок
+                    </h1>
+                    <p class="text-muted mb-0">Полный обзор криптовалютного рынка с актуальными данными</p>
+                </div>
+                <div class="d-flex align-items-center">
+                    <div class="me-3">
+                        <small class="text-muted">Последнее обновление:</small>
+                        <div class="fw-bold text-success">{{ now.strftime('%H:%M:%S') }}</div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm me-2" onclick="refreshMarket()">
+                        <i class="bi bi-arrow-clockwise"></i> Обновить
+                    </button>
+                    <span class="badge bg-success">
+                        <i class="bi bi-circle-fill blink"></i> Live
+                    </span>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
-    <div class="card-body table-responsive">
-      <table class="table table-hover" id="marketTable">
-        <thead>
-          <tr>
-            <th>Символ</th>
-            <th>Последняя цена</th>
-            <th>Изменение за 24 ч</th>
-            <th>Макс. за 24 ч</th>
-            <th>Мин. за 24 ч</th>
-            <th>Объём</th>
-          </tr>
-        </thead>
-        <tbody id="marketBody">
-{% for c in market_data %}
-<tr data-symbol="{{ c.symbol }}">
-  <td>{{ c.symbol }}</td>
-  <td>${{ c.last }}</td>
-  <td class="{{ 'text-success' if c.change >= 0 else 'text-danger' }}">
-    {{ c.change }}%
-  </td>
-  <td>${{ c.high }}</td>
-  <td>${{ c.low }}</td>
-  <td>{{ c.volume }}</td>
-</tr>
-{% endfor %}
-
-</tbody>
-      </table>
+    <!-- Market Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100 market-stat-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-primary bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-graph-up text-primary fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="text-muted small">Всего пар</div>
+                            <div class="h4 mb-0" id="totalPairs">{{ market_data|length }}</div>
+                            <div class="text-primary small">
+                                <i class="bi bi-arrow-up"></i> Активно торгуются
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100 market-stat-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-success bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-arrow-up text-success fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="text-muted small">Растут</div>
+                            <div class="h4 mb-0 text-success" id="gainersCount">{{ market_data|selectattr('change', 'gt', 0)|list|length }}</div>
+                            <div class="text-success small">
+                                <i class="bi bi-trending-up"></i> Бычий тренд
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-danger bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-arrow-down text-danger fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="text-muted small">Падают</div>
+                            <div class="h4 mb-0 text-danger">{{ market_data|selectattr('change', 'lt', 0)|list|length }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-warning bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-activity text-warning fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="text-muted small">Волатильность</div>
+                            <div class="h4 mb-0 text-warning">Высокая</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
+
+    <!-- Market Data Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">
+                                <i class="bi bi-table text-primary me-2"></i>
+                                Рыночные данные
+                            </h5>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center justify-content-md-end">
+                                <!-- Advanced Search -->
+                                <div class="input-group input-group-sm me-3" style="width: 300px;">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input type="text" class="form-control border-start-0" 
+                                           placeholder="Поиск по названию или символу..." id="searchInput">
+                                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
+                                            data-bs-toggle="dropdown" title="Расширенный поиск">
+                                        <i class="bi bi-funnel-fill"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><h6 class="dropdown-header">Категории</h6></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByCategory('all')">
+                                            <i class="bi bi-list me-2"></i>Все криптовалюты
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByCategory('top')">
+                                            <i class="bi bi-star me-2"></i>Топ-10
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByCategory('defi')">
+                                            <i class="bi bi-bank me-2"></i>DeFi токены
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByCategory('meme')">
+                                            <i class="bi bi-emoji-smile me-2"></i>Мем-коины
+                                        </a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Цена</h6></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByPrice('under1')">
+                                            <i class="bi bi-currency-dollar me-2"></i>Менее $1
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByPrice('1to100')">
+                                            <i class="bi bi-currency-dollar me-2"></i>$1 - $100
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByPrice('over100')">
+                                            <i class="bi bi-currency-dollar me-2"></i>Свыше $100
+                                        </a></li>
+                                    </ul>
+                                </div>
+                                
+                                <!-- Filters -->
+                                <div class="dropdown me-2">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                                            type="button" data-bs-toggle="dropdown">
+                                        <i class="bi bi-funnel"></i> Фильтр
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="#" onclick="filterByChange('all')">
+                                            <i class="bi bi-list me-2"></i>Все
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByChange('up')">
+                                            <i class="bi bi-arrow-up text-success me-2"></i>Растущие
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="filterByChange('down')">
+                                            <i class="bi bi-arrow-down text-danger me-2"></i>Падающие
+                                        </a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="#" onclick="sortBy('volume')">
+                                            <i class="bi bi-sort-numeric-down me-2"></i>По объёму
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="sortBy('price')">
+                                            <i class="bi bi-sort-numeric-down me-2"></i>По цене
+                                        </a></li>
+                                    </ul>
+                                </div>
+                                
+                                <!-- Export -->
+                                <button class="btn btn-sm btn-outline-secondary" onclick="exportMarketData()">
+                                    <i class="bi bi-download"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="marketTable">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="border-0 px-4 py-3">
+                                        <div class="d-flex align-items-center">
+                                            Криптовалюта
+                                            <i class="bi bi-arrow-up-down ms-1 text-muted sortable" data-sort="symbol" style="font-size: 0.8rem; cursor: pointer;"></i>
+                                        </div>
+                                    </th>
+                                    <th class="border-0 px-4 py-3 text-end">
+                                        <div class="d-flex align-items-center justify-content-end">
+                                            Цена
+                                            <i class="bi bi-arrow-up-down ms-1 text-muted sortable" data-sort="price" style="font-size: 0.8rem; cursor: pointer;"></i>
+                                        </div>
+                                    </th>
+                                    <th class="border-0 px-4 py-3 text-end">
+                                        <div class="d-flex align-items-center justify-content-end">
+                                            Изменение 24ч
+                                            <i class="bi bi-arrow-up-down ms-1 text-muted sortable" data-sort="change" style="font-size: 0.8rem; cursor: pointer;"></i>
+                                        </div>
+                                    </th>
+                                    <th class="border-0 px-4 py-3 text-end">Спред</th>
+                                    <th class="border-0 px-4 py-3 text-end">Объём (24ч)</th>
+                                    <th class="border-0 px-4 py-3 text-end">
+                                        <div class="d-flex align-items-center justify-content-end">
+                                            Ранг
+                                            <i class="bi bi-arrow-up-down ms-1 text-muted sortable" data-sort="rank" style="font-size: 0.8rem; cursor: pointer;"></i>
+                                        </div>
+                                    </th>
+                                    <th class="border-0 px-4 py-3 text-center">Торговля</th>
+                                </tr>
+                            </thead>
+                            <tbody id="marketBody">
+                                {% for c in market_data %}
+                                <tr class="market-row" data-symbol="{{ c.symbol }}" data-change="{{ c.change }}">
+                                    <td class="px-4 py-3">
+                                        <div class="d-flex align-items-center">
+                                            <div class="crypto-icon me-3">
+                                                {% if 'BTC' in c.symbol %}
+                                                    <i class="bi bi-currency-bitcoin text-warning fs-4"></i>
+                                                {% elif 'ETH' in c.symbol %}
+                                                    <i class="bi bi-ethereum text-info fs-4"></i>
+                                                {% else %}
+                                                    <i class="bi bi-coin text-secondary fs-4"></i>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">{{ c.base_currency }}/{{ c.quote_currency }}</div>
+                                                <small class="text-muted">
+                                                    {% if c.base_currency == 'BTC' %}Bitcoin
+                                                    {% elif c.base_currency == 'ETH' %}Ethereum
+                                                    {% elif c.base_currency == 'BNB' %}Binance Coin
+                                                    {% elif c.base_currency == 'ADA' %}Cardano
+                                                    {% elif c.base_currency == 'SOL' %}Solana
+                                                    {% elif c.base_currency == 'XRP' %}Ripple
+                                                    {% elif c.base_currency == 'DOGE' %}Dogecoin
+                                                    {% elif c.base_currency == 'AVAX' %}Avalanche
+                                                    {% elif c.base_currency == 'DOT' %}Polkadot
+                                                    {% elif c.base_currency == 'LINK' %}Chainlink
+                                                    {% elif c.base_currency == 'UNI' %}Uniswap
+                                                    {% elif c.base_currency == 'AAVE' %}Aave
+                                                    {% elif c.base_currency == 'SHIB' %}Shiba Inu
+                                                    {% elif c.base_currency == 'LTC' %}Litecoin
+                                                    {% elif c.base_currency == 'BCH' %}Bitcoin Cash
+                                                    {% elif c.base_currency == 'ETC' %}Ethereum Classic
+                                                    {% elif c.base_currency == 'TON' %}Toncoin
+                                                    {% elif c.base_currency == 'NEAR' %}NEAR Protocol
+                                                    {% elif c.base_currency == 'FTM' %}Fantom
+                                                    {% elif c.base_currency == 'ATOM' %}Cosmos
+                                                    {% elif c.base_currency == 'ICP' %}Internet Computer
+                                                    {% else %}{{ c.base_currency }}
+                                                    {% endif %}
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-end">
+                                        <span class="fw-bold">${{ "{:,.2f}".format(c.last) }}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-end">
+                                        <div class="d-flex align-items-center justify-content-end">
+                                            <span class="badge {{ 'bg-success bg-opacity-10 text-success' if c.change >= 0 else 'bg-danger bg-opacity-10 text-danger' }} px-2 py-1 me-2">
+                                                <i class="bi {{ 'bi-triangle-fill' if c.change >= 0 else 'bi-triangle-fill' }} me-1" 
+                                                   style="transform: {{ 'rotate(0deg)' if c.change >= 0 else 'rotate(180deg)' }}; font-size: 0.6rem;"></i>
+                                                {{ "{:+.2f}".format(c.change) }}%
+                                            </span>
+                                            <div class="progress" style="width: 40px; height: 4px;">
+                                                <div class="progress-bar {{ 'bg-success' if c.change >= 0 else 'bg-danger' }}" 
+                                                     style="width: {{ [((c.change if c.change >= 0 else -c.change) * 5), 100] | min }}%"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-end">
+                                        <span class="text-muted small">{{ "{:.4f}".format(c.spread) }}</span>
+                                        <div class="text-muted" style="font-size: 0.7rem;">
+                                            Bid: ${{ "{:,.2f}".format(c.bid) }}<br>
+                                            Ask: ${{ "{:,.2f}".format(c.ask) }}
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-end">
+                                        <div class="text-muted">{{ "{:,.0f}".format(c.volume) }} {{ c.base_currency }}</div>
+                                        <small class="text-muted">${{ "{:,.0f}".format(c.quote_volume) }}</small>
+                                    </td>
+                                    <td class="px-4 py-3 text-end">
+                                        <span class="badge bg-primary bg-opacity-10 text-primary">#{{ c.market_cap_rank }}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <div class="btn-group-vertical btn-group-sm" role="group">
+                                            <button class="btn btn-success btn-sm mb-1" 
+                                                    onclick="openBuyModal('{{ c.symbol }}', '{{ c.base_currency }}', {{ c.last }}, {{ c.min_order_size }})" 
+                                                    title="Купить {{ c.base_currency }}">
+                                                <i class="bi bi-arrow-up-circle me-1"></i>Купить
+                                            </button>
+                                            <button class="btn btn-danger btn-sm mb-1" 
+                                                    onclick="openSellModal('{{ c.symbol }}', '{{ c.base_currency }}', {{ c.last }}, {{ c.min_order_size }})" 
+                                                    title="Продать {{ c.base_currency }}">
+                                                <i class="bi bi-arrow-down-circle me-1"></i>Продать
+                                            </button>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button class="btn btn-outline-primary btn-sm" 
+                                                        onclick="openChartModal('{{ c.symbol }}', '{{ c.base_currency }}')" 
+                                                        title="График цены">
+                                                    <i class="bi bi-graph-up"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary btn-sm" 
+                                                        onclick="addToWatchlist('{{ c.symbol }}')" title="В избранное">
+                                                    <i class="bi bi-star"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                <div class="card-footer bg-white border-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="text-muted small">
+                            Показано {{ market_data|length }} из {{ market_data|length }} записей
+                        </div>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item disabled">
+                                    <span class="page-link">Предыдущая</span>
+                                </li>
+                                <li class="page-item active">
+                                    <span class="page-link">1</span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link">Следующая</span>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Modal -->
+<div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Установить ценовой алерт</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="alertForm">
+                    <div class="mb-3">
+                        <label class="form-label">Криптовалюта</label>
+                        <input type="text" class="form-control" id="alertSymbol" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Условие</label>
+                        <select class="form-select" id="alertCondition">
+                            <option value=">">Цена выше</option>
+                            <option value="<">Цена ниже</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Целевая цена ($)</label>
+                        <input type="number" class="form-control" id="alertPrice" step="0.01" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveAlert()">Создать алерт</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Buy Modal -->
+<div class="modal fade" id="buyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success bg-opacity-10">
+                <h5 class="modal-title text-success">
+                    <i class="bi bi-arrow-up-circle me-2"></i>Купить криптовалюту
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="buyForm">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Торговая пара</label>
+                            <input type="text" class="form-control" id="buySymbol" readonly>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Текущая цена</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="text" class="form-control" id="buyCurrentPrice" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип ордера</label>
+                        <select class="form-select" id="buyOrderType">
+                            <option value="market">Рыночный ордер</option>
+                            <option value="limit">Лимитный ордер</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="buyLimitPriceGroup" style="display: none;">
+                        <label class="form-label">Лимитная цена</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="buyLimitPrice" step="0.01">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Количество</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="buyQuantity" step="0.00001" required>
+                            <span class="input-group-text" id="buyCurrency"></span>
+                        </div>
+                        <div class="form-text">Минимум: <span id="buyMinOrder"></span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Общая стоимость</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="text" class="form-control" id="buyTotal" readonly>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Внимание:</strong> Это демо-версия. Реальные сделки не совершаются.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" onclick="executeBuyOrder()">
+                    <i class="bi bi-arrow-up-circle me-1"></i>Купить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sell Modal -->
+<div class="modal fade" id="sellModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger bg-opacity-10">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-arrow-down-circle me-2"></i>Продать криптовалюту
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sellForm">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Торговая пара</label>
+                            <input type="text" class="form-control" id="sellSymbol" readonly>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Текущая цена</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="text" class="form-control" id="sellCurrentPrice" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип ордера</label>
+                        <select class="form-select" id="sellOrderType">
+                            <option value="market">Рыночный ордер</option>
+                            <option value="limit">Лимитный ордер</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="sellLimitPriceGroup" style="display: none;">
+                        <label class="form-label">Лимитная цена</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="sellLimitPrice" step="0.01">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Количество</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="sellQuantity" step="0.00001" required>
+                            <span class="input-group-text" id="sellCurrency"></span>
+                        </div>
+                        <div class="form-text">Доступно: <span id="sellAvailable">0.00</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Общая стоимость</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="text" class="form-control" id="sellTotal" readonly>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Внимание:</strong> Это демо-версия. Реальные сделки не совершаются.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" onclick="executeSellOrder()">
+                    <i class="bi bi-arrow-down-circle me-1"></i>Продать
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<!-- React Market Scripts -->
+<script src="{{ url_for('static', filename='dist/vendors.js') }}"></script>
+<script src="{{ url_for('static', filename='dist/main.js') }}"></script>
+<script src="{{ url_for('static', filename='dist/market.js') }}"></script>
+
+<!-- Fallback JavaScript for non-React functionality -->
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const tbody = document.getElementById('marketBody');
-    const input = document.getElementById('searchInput');
-    const btn   = document.getElementById('searchButton');
+// Check if React components loaded successfully
+if (!document.getElementById('react-market').hasChildNodes()) {
+    console.warn('React components not loaded, falling back to vanilla JS');
+    
+    // Fallback functionality would go here
+    // For now, we'll just reload the page to show the noscript content
+    setTimeout(() => {
+        if (!document.getElementById('react-market').hasChildNodes()) {
+            location.reload();
+        }
+    }, 2000);
+}
 
-    function filterTable() {
-      const q = input.value.toUpperCase();
-      tbody.querySelectorAll('tr').forEach(row => {
-        row.style.display = row.dataset.symbol.includes(q) ? '' : 'none';
-      });
-    }
+<script>
+let sortDirection = {};
 
-    btn.addEventListener('click', filterTable);
-    input.addEventListener('keyup', e => {
-      if (e.key === 'Enter') filterTable();
+// Поиск по таблице
+document.getElementById('searchInput').addEventListener('keyup', function() {
+    const searchTerm = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    
+    rows.forEach(row => {
+        const symbol = row.querySelector('td').textContent.toLowerCase();
+        if (symbol.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
     });
-  });
+});
+
+// Фильтрация по изменению цены
+function filterByChange(type) {
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    
+    rows.forEach(row => {
+        const change = parseFloat(row.dataset.change);
+        let show = false;
+        
+        switch(type) {
+            case 'all':
+                show = true;
+                break;
+            case 'up':
+                show = change >= 0;
+                break;
+            case 'down':
+                show = change < 0;
+                break;
+        }
+        
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+// Сортировка таблицы
+function sortBy(column) {
+    const table = document.getElementById('marketTable');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    // Определяем направление сортировки
+    sortDirection[column] = sortDirection[column] === 'asc' ? 'desc' : 'asc';
+    
+    rows.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch(column) {
+            case 'symbol':
+                aVal = a.dataset.symbol;
+                bVal = b.dataset.symbol;
+                break;
+            case 'price':
+                aVal = parseFloat(a.querySelector('td:nth-child(2)').textContent.replace('$', '').replace(',', ''));
+                bVal = parseFloat(b.querySelector('td:nth-child(2)').textContent.replace('$', '').replace(',', ''));
+                break;
+            case 'change':
+                aVal = parseFloat(a.dataset.change);
+                bVal = parseFloat(b.dataset.change);
+                break;
+            case 'volume':
+                aVal = parseFloat(a.querySelector('td:nth-child(6)').textContent.replace(',', ''));
+                bVal = parseFloat(b.querySelector('td:nth-child(6)').textContent.replace(',', ''));
+                break;
+        }
+        
+        if (sortDirection[column] === 'asc') {
+            return aVal > bVal ? 1 : -1;
+        } else {
+            return aVal < bVal ? 1 : -1;
+        }
+    });
+    
+    // Перестраиваем таблицу
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// Обработчики событий для сортировки
+document.querySelectorAll('.sortable').forEach(header => {
+    header.addEventListener('click', function() {
+        sortBy(this.dataset.sort);
+    });
+});
+
+// Функции для действий
+function refreshMarket() {
+    location.reload();
+}
+
+function addToWatchlist(symbol) {
+    alert('Добавлено в избранное: ' + symbol);
+}
+
+function setAlert(symbol) {
+    document.getElementById('alertSymbol').value = symbol;
+    new bootstrap.Modal(document.getElementById('alertModal')).show();
+}
+
+function saveAlert() {
+    const symbol = document.getElementById('alertSymbol').value;
+    const condition = document.getElementById('alertCondition').value;
+    const price = document.getElementById('alertPrice').value;
+    
+    if (!price) {
+        alert('Пожалуйста, укажите целевую цену');
+        return;
+    }
+    
+    alert(`Алерт создан: ${symbol} ${condition} $${price}`);
+    bootstrap.Modal.getInstance(document.getElementById('alertModal')).hide();
+}
+
+function exportMarketData() {
+    alert('Функция экспорта будет добавлена позже');
+}
+
+// Функции для торговых модальных окон
+function openBuyModal(symbol, currency, price, minOrderSize) {
+    document.getElementById('buySymbol').value = symbol.replace('-', '/');
+    document.getElementById('buyCurrentPrice').value = price.toFixed(2);
+    document.getElementById('buyCurrency').textContent = currency;
+    document.getElementById('buyMinOrder').textContent = minOrderSize + ' ' + currency;
+    
+    // Обработчики событий для расчета общей стоимости
+    const quantityInput = document.getElementById('buyQuantity');
+    const totalInput = document.getElementById('buyTotal');
+    const orderTypeSelect = document.getElementById('buyOrderType');
+    const limitPriceGroup = document.getElementById('buyLimitPriceGroup');
+    const limitPriceInput = document.getElementById('buyLimitPrice');
+    
+    function calculateTotal() {
+        const quantity = parseFloat(quantityInput.value) || 0;
+        const currentPrice = parseFloat(document.getElementById('buyCurrentPrice').value) || 0;
+        const orderType = orderTypeSelect.value;
+        const limitPrice = parseFloat(limitPriceInput.value) || currentPrice;
+        
+        const effectivePrice = orderType === 'limit' ? limitPrice : currentPrice;
+        const total = quantity * effectivePrice;
+        totalInput.value = total.toFixed(2);
+    }
+    
+    quantityInput.addEventListener('input', calculateTotal);
+    limitPriceInput.addEventListener('input', calculateTotal);
+    
+    orderTypeSelect.addEventListener('change', function() {
+        if (this.value === 'limit') {
+            limitPriceGroup.style.display = 'block';
+            limitPriceInput.value = price.toFixed(2);
+        } else {
+            limitPriceGroup.style.display = 'none';
+        }
+        calculateTotal();
+    });
+    
+    new bootstrap.Modal(document.getElementById('buyModal')).show();
+}
+
+function openSellModal(symbol, currency, price, minOrderSize) {
+    document.getElementById('sellSymbol').value = symbol.replace('-', '/');
+    document.getElementById('sellCurrentPrice').value = price.toFixed(2);
+    document.getElementById('sellCurrency').textContent = currency;
+    document.getElementById('sellAvailable').textContent = '0.00 ' + currency; // В будущем получать из портфеля
+    
+    // Обработчики событий для расчета общей стоимости
+    const quantityInput = document.getElementById('sellQuantity');
+    const totalInput = document.getElementById('sellTotal');
+    const orderTypeSelect = document.getElementById('sellOrderType');
+    const limitPriceGroup = document.getElementById('sellLimitPriceGroup');
+    const limitPriceInput = document.getElementById('sellLimitPrice');
+    
+    function calculateTotal() {
+        const quantity = parseFloat(quantityInput.value) || 0;
+        const currentPrice = parseFloat(document.getElementById('sellCurrentPrice').value) || 0;
+        const orderType = orderTypeSelect.value;
+        const limitPrice = parseFloat(limitPriceInput.value) || currentPrice;
+        
+        const effectivePrice = orderType === 'limit' ? limitPrice : currentPrice;
+        const total = quantity * effectivePrice;
+        totalInput.value = total.toFixed(2);
+    }
+    
+    quantityInput.addEventListener('input', calculateTotal);
+    limitPriceInput.addEventListener('input', calculateTotal);
+    
+    orderTypeSelect.addEventListener('change', function() {
+        if (this.value === 'limit') {
+            limitPriceGroup.style.display = 'block';
+            limitPriceInput.value = price.toFixed(2);
+        } else {
+            limitPriceGroup.style.display = 'none';
+        }
+        calculateTotal();
+    });
+    
+    new bootstrap.Modal(document.getElementById('sellModal')).show();
+}
+
+function executeBuyOrder() {
+    const symbol = document.getElementById('buySymbol').value;
+    const quantity = document.getElementById('buyQuantity').value;
+    const orderType = document.getElementById('buyOrderType').value;
+    const total = document.getElementById('buyTotal').value;
+    
+    if (!quantity || parseFloat(quantity) <= 0) {
+        alert('Пожалуйста, укажите корректное количество');
+        return;
+    }
+    
+    // В будущем здесь будет API вызов для создания ордера
+    alert(`Демо-ордер создан:\nТип: Покупка (${orderType})\nПара: ${symbol}\nКоличество: ${quantity}\nОбщая стоимость: $${total}\n\nВ реальной версии ордер будет отправлен на биржу.`);
+    
+    bootstrap.Modal.getInstance(document.getElementById('buyModal')).hide();
+}
+
+function executeSellOrder() {
+    const symbol = document.getElementById('sellSymbol').value;
+    const quantity = document.getElementById('sellQuantity').value;
+    const orderType = document.getElementById('sellOrderType').value;
+    const total = document.getElementById('sellTotal').value;
+    
+    if (!quantity || parseFloat(quantity) <= 0) {
+        alert('Пожалуйста, укажите корректное количество');
+        return;
+    }
+    
+    // В будущем здесь будет API вызов для создания ордера
+    alert(`Демо-ордер создан:\nТип: Продажа (${orderType})\nПара: ${symbol}\nКоличество: ${quantity}\nОбщая стоимость: $${total}\n\nВ реальной версии ордер будет отправлен на биржу.`);
+    
+    bootstrap.Modal.getInstance(document.getElementById('sellModal')).hide();
+}
+
+// Enhanced market functionality
+let currentFilters = {
+    category: 'all',
+    priceRange: 'all',
+    change: 'all'
+};
+
+// Advanced search functionality
+document.getElementById('searchInput').addEventListener('keyup', function() {
+    const searchTerm = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    
+    rows.forEach(row => {
+        const symbol = row.querySelector('td').textContent.toLowerCase();
+        const cryptoName = row.querySelector('td small').textContent.toLowerCase();
+        
+        if (symbol.includes(searchTerm) || cryptoName.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    updateVisibleCount();
+});
+
+// Category filtering
+function filterByCategory(category) {
+    currentFilters.category = category;
+    applyAllFilters();
+}
+
+// Price range filtering
+function filterByPrice(priceRange) {
+    currentFilters.priceRange = priceRange;
+    applyAllFilters();
+}
+
+// Apply all active filters
+function applyAllFilters() {
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    
+    rows.forEach(row => {
+        let show = true;
+        
+        // Category filter
+        if (currentFilters.category !== 'all') {
+            const symbol = row.dataset.symbol;
+            show = show && matchesCategory(symbol, currentFilters.category);
+        }
+        
+        // Price filter
+        if (currentFilters.priceRange !== 'all') {
+            const priceText = row.querySelector('td:nth-child(2)').textContent;
+            const price = parseFloat(priceText.replace('$', '').replace(',', ''));
+            show = show && matchesPriceRange(price, currentFilters.priceRange);
+        }
+        
+        // Change filter
+        if (currentFilters.change !== 'all') {
+            const change = parseFloat(row.dataset.change);
+            show = show && matchesChangeFilter(change, currentFilters.change);
+        }
+        
+        row.style.display = show ? '' : 'none';
+    });
+    
+    updateVisibleCount();
+}
+
+function matchesCategory(symbol, category) {
+    const topCryptos = ['BTC', 'ETH', 'BNB', 'ADA', 'SOL', 'XRP', 'DOT', 'AVAX', 'LINK', 'UNI'];
+    const defiTokens = ['UNI', 'AAVE', 'LINK', 'DOT'];
+    const memeCoins = ['DOGE', 'SHIB'];
+    
+    switch(category) {
+        case 'top':
+            return topCryptos.some(crypto => symbol.includes(crypto));
+        case 'defi':
+            return defiTokens.some(crypto => symbol.includes(crypto));
+        case 'meme':
+            return memeCoins.some(crypto => symbol.includes(crypto));
+        default:
+            return true;
+    }
+}
+
+function matchesPriceRange(price, range) {
+    switch(range) {
+        case 'under1':
+            return price < 1;
+        case '1to100':
+            return price >= 1 && price <= 100;
+        case 'over100':
+            return price > 100;
+        default:
+            return true;
+    }
+}
+
+function matchesChangeFilter(change, filter) {
+    switch(filter) {
+        case 'up':
+            return change >= 0;
+        case 'down':
+            return change < 0;
+        default:
+            return true;
+    }
+}
+
+function updateVisibleCount() {
+    const visibleRows = document.querySelectorAll('#marketTable tbody tr[style=""]').length;
+    const totalRows = document.querySelectorAll('#marketTable tbody tr').length;
+    
+    // Update pagination info
+    const paginationInfo = document.querySelector('.card-footer .text-muted');
+    if (paginationInfo) {
+        paginationInfo.textContent = `Показано ${visibleRows} из ${totalRows} записей`;
+    }
+}
+
+// Real-time price updates simulation
+function simulateRealTimeUpdates() {
+    const rows = document.querySelectorAll('#marketTable tbody tr');
+    
+    rows.forEach(row => {
+        // Simulate small price changes
+        const priceCell = row.querySelector('td:nth-child(2)');
+        const changeCell = row.querySelector('td:nth-child(3)');
+        
+        if (Math.random() < 0.3) { // 30% chance of price update
+            const currentPrice = parseFloat(priceCell.textContent.replace('$', '').replace(',', ''));
+            const changePercent = (Math.random() - 0.5) * 0.02; // ±1% change
+            const newPrice = currentPrice * (1 + changePercent);
+            
+            priceCell.textContent = '$' + newPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            // Add flash effect
+            priceCell.style.backgroundColor = changePercent > 0 ? '#d4edda' : '#f8d7da';
+            setTimeout(() => {
+                priceCell.style.backgroundColor = '';
+            }, 1000);
+        }
+    });
+}
+
+// Enhanced hover effects for market stat cards
+document.addEventListener('DOMContentLoaded', function() {
+    const statCards = document.querySelectorAll('.market-stat-card');
+    statCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-3px)';
+            this.style.transition = 'transform 0.3s ease, box-shadow 0.3s ease';
+            this.style.boxShadow = '0 0.5rem 1rem rgba(0, 0, 0, 0.15)';
+        });
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '';
+        });
+    });
+});
+
+// Auto-refresh market data every 30 seconds
+setInterval(function() {
+    simulateRealTimeUpdates();
+    updateMarketStats();
+}, 30000);
+
+// Update market statistics
+function updateMarketStats() {
+    fetch('/api/market-data')
+        .then(response => response.json())
+        .then(data => {
+            if (data.total_pairs) {
+                document.getElementById('totalPairs').textContent = data.total_pairs;
+            }
+            if (data.gainers_count) {
+                document.getElementById('gainersCount').textContent = data.gainers_count;
+            }
+        })
+        .catch(error => {
+            console.log('Using simulated market data');
+        });
+}
+
+// Initialize enhanced functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Start real-time updates simulation
+    setTimeout(simulateRealTimeUpdates, 5000);
+    
+    // Initialize tooltips for better UX
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// Chart Modal Functions
+let currentChart = null;
+
+function openChartModal(symbol, baseCurrency) {
+    const modal = new bootstrap.Modal(document.getElementById('chartModal'));
+    document.getElementById('chartModalTitle').textContent = `График ${symbol}`;
+    document.getElementById('chartSymbol').textContent = symbol;
+    
+    // Clear previous chart
+    if (currentChart) {
+        currentChart.destroy();
+        currentChart = null;
+    }
+    
+    // Show loading state
+    const chartContainer = document.getElementById('priceChart');
+    chartContainer.innerHTML = `
+        <div class="d-flex align-items-center justify-content-center" style="height: 400px;">
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+                <p class="text-muted">Загрузка данных графика...</p>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Load chart data
+    loadChartData(symbol);
+}
+
+async function loadChartData(symbol) {
+    try {
+        const response = await fetch(`/trader/api/chart/${symbol}?timeframe=1d&limit=50`);
+        if (!response.ok) {
+            throw new Error('Failed to load chart data');
+        }
+        
+        const data = await response.json();
+        createPriceChart(data);
+        
+    } catch (error) {
+        console.error('Error loading chart data:', error);
+        // Show error state
+        document.getElementById('priceChart').innerHTML = `
+            <div class="d-flex align-items-center justify-content-center" style="height: 400px;">
+                <div class="text-center">
+                    <i class="bi bi-exclamation-triangle fs-1 text-warning mb-3"></i>
+                    <p class="text-muted">Ошибка загрузки данных графика</p>
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadChartData('${symbol}')">
+                        <i class="bi bi-arrow-clockwise"></i> Повторить
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function createPriceChart(data) {
+    const chartContainer = document.getElementById('priceChart');
+    chartContainer.innerHTML = '<canvas id="priceChartCanvas" style="height: 400px;"></canvas>';
+    
+    const ctx = document.getElementById('priceChartCanvas');
+    
+    // Prepare chart data
+    const labels = data.data.map(item => {
+        const date = new Date(item.timestamp);
+        return date.toLocaleDateString('ru-RU', { 
+            month: 'short', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    });
+    
+    const prices = data.data.map(item => item.close);
+    const volumes = data.data.map(item => item.volume);
+    
+    // Create gradient
+    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(54, 162, 235, 0.2)');
+    gradient.addColorStop(1, 'rgba(54, 162, 235, 0.02)');
+    
+    currentChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Цена',
+                data: prices,
+                borderColor: '#36a2eb',
+                backgroundColor: gradient,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1,
+                pointBackgroundColor: '#36a2eb',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: '#36a2eb',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            return 'Цена: $' + context.parsed.y.toLocaleString('ru-RU', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 6
+                            });
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        color: '#6c757d',
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: '#6c757d',
+                        callback: function(value) {
+                            return '$' + value.toLocaleString('ru-RU');
+                        }
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+}
+
+function changeChartTimeframe(timeframe) {
+    const symbol = document.getElementById('chartSymbol').textContent;
+    
+    // Update active button
+    document.querySelectorAll('.timeframe-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Reload chart with new timeframe
+    loadChartData(symbol);
+}
 </script>
+
+<!-- Chart Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary bg-opacity-10">
+                <h5 class="modal-title text-primary" id="chartModalTitle">
+                    <i class="bi bi-graph-up me-2"></i>График цены
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Торговая пара</h6>
+                        <span class="fw-bold fs-5" id="chartSymbol">BTC/USDT</span>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <h6 class="text-muted mb-2">Временной интервал</h6>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary timeframe-btn active" onclick="changeChartTimeframe('1h')">1Ч</button>
+                            <button type="button" class="btn btn-outline-primary timeframe-btn" onclick="changeChartTimeframe('4h')">4Ч</button>
+                            <button type="button" class="btn btn-outline-primary timeframe-btn" onclick="changeChartTimeframe('1d')">1Д</button>
+                            <button type="button" class="btn btn-outline-primary timeframe-btn" onclick="changeChartTimeframe('1w')">1Н</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-2">
+                        <div id="priceChart" style="height: 400px;">
+                            <!-- Chart will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <div class="text-center p-2 bg-light rounded">
+                            <small class="text-muted d-block">Открытие</small>
+                            <span class="fw-bold" id="chartOpen">-</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center p-2 bg-light rounded">
+                            <small class="text-muted d-block">Максимум</small>
+                            <span class="fw-bold text-success" id="chartHigh">-</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center p-2 bg-light rounded">
+                            <small class="text-muted d-block">Минимум</small>
+                            <span class="fw-bold text-danger" id="chartLow">-</span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center p-2 bg-light rounded">
+                            <small class="text-muted d-block">Объем</small>
+                            <span class="fw-bold" id="chartVolume">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-primary" onclick="addToWatchlist(document.getElementById('chartSymbol').textContent)">
+                    <i class="bi bi-star me-1"></i>В избранное
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

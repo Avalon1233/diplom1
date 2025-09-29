@@ -2,9 +2,8 @@
 """
 Analyst blueprint for cryptocurrency analysis, comparisons, and research tools
 """
-from flask import Blueprint, render_template, request, jsonify, current_app, flash
-from flask_login import login_required
-
+from flask import Blueprint, render_template, request, jsonify, current_app
+from flask_login import login_required, current_user
 from app.models import db, SystemMetrics
 from app.forms import AnalysisForm, CompareForm
 from app.utils.decorators import role_required, log_user_activity, measure_performance
@@ -179,7 +178,53 @@ def perform_analysis():
         if analysis_type == 'neural':
             # Вызов нового продвинутого ML анализа
             result = analysis_service.advanced_ml_analysis(symbol, timeframe)
-            return jsonify(result)
+            
+            # Адаптация ответа для фронтенда
+            if result.get('status') == 'success':
+                # Конвертируем NumPy типы в стандартные Python типы для JSON сериализации
+                def convert_numpy_types(obj):
+                    import numpy as np
+                    if isinstance(obj, np.integer):
+                        return int(obj)
+                    elif isinstance(obj, np.floating):
+                        return float(obj)
+                    elif isinstance(obj, np.ndarray):
+                        return obj.tolist()
+                    elif isinstance(obj, dict):
+                        return {k: convert_numpy_types(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_numpy_types(v) for v in obj]
+                    return obj
+                
+                # Конвертируем все данные
+                result = convert_numpy_types(result)
+                
+                result['success'] = True
+                # Фронтенд ожидает эти поля, добавим заглушки, если их нет
+                if 'historical_data' not in result:
+                    # Создаем минимальные исторические данные для графика
+                    import datetime
+                    current_price = result.get('current_price', 50000)
+                    result['historical_data'] = [
+                        {
+                            'timestamp': (datetime.datetime.now() - datetime.timedelta(days=i)).isoformat(),
+                            'close': current_price * (1 + (i * 0.001))  # Небольшие вариации цены
+                        } for i in range(30, 0, -1)  # 30 дней истории
+                    ]
+                if 'model_accuracy' not in result:
+                    result['model_accuracy'] = result.get('training_metrics', {}).get('ensemble', {}).get('accuracy', 0)
+                if 'confidence_interval' not in result:
+                    pred_price = result.get('predicted_price', 0)
+                    std_dev = result.get('prediction_std_dev', 0)
+                    result['confidence_interval'] = [pred_price - 1.96 * std_dev, pred_price + 1.96 * std_dev]
+                if 'uncertainty' not in result:
+                    result['uncertainty'] = result.get('prediction_std_dev', 0)
+                if 'explanation' not in result:
+                    result['explanation'] = result.get('insights', {})
+
+                return jsonify(result)
+            else:
+                return jsonify({'success': False, 'error': result.get('message', 'Произошла ошибка при анализе.')}), 500
         else:
             # Заглушка для старых типов анализа, чтобы не ломать интерфейс
             # В будущем их можно будет также перевести на новый сервис

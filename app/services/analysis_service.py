@@ -15,7 +15,7 @@ import logging
 import time
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from flask import current_app
 
@@ -37,6 +37,7 @@ try:
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
+    xgb = None
 
 try:
     from transformers import pipeline
@@ -45,6 +46,9 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
 from app.services.crypto_service import CryptoService
+from app.services.sentiment_service import SentimentAnalysisService
+from app.services.macro_indicators_service import MacroIndicatorsService
+from app.services.hyperparameter_optimization_service import HyperparameterOptimizationService
 
 
 class AdvancedFeatureEngineering:
@@ -54,7 +58,7 @@ class AdvancedFeatureEngineering:
     """
     
     @staticmethod
-    def create_advanced_features(df: pd.DataFrame) -> pd.DataFrame:
+    def create_advanced_features(df: pd.DataFrame, symbol: str = 'BTC') -> pd.DataFrame:
         """
         Создает расширенный набор технических индикаторов и признаков
         
@@ -168,6 +172,87 @@ class AdvancedFeatureEngineering:
             result_df['momentum_10'] = talib.MOM(close, timeperiod=10)
             result_df['roc_10'] = talib.ROC(close, timeperiod=10)
             
+            # === ДОПОЛНИТЕЛЬНЫЕ ПРОДВИНУТЫЕ ИНДИКАТОРЫ ===
+            # Ichimoku Cloud компоненты
+            high_9 = pd.Series(high).rolling(window=9).max()
+            low_9 = pd.Series(low).rolling(window=9).min()
+            high_26 = pd.Series(high).rolling(window=26).max()
+            low_26 = pd.Series(low).rolling(window=26).min()
+            high_52 = pd.Series(high).rolling(window=52).max()
+            low_52 = pd.Series(low).rolling(window=52).min()
+            
+            result_df['tenkan_sen'] = (high_9 + low_9) / 2
+            result_df['kijun_sen'] = (high_26 + low_26) / 2
+            result_df['senkou_span_a'] = ((result_df['tenkan_sen'] + result_df['kijun_sen']) / 2).shift(26)
+            result_df['senkou_span_b'] = ((high_52 + low_52) / 2).shift(26)
+            result_df['chikou_span'] = pd.Series(close).shift(-26)
+            
+            # Дополнительные осцилляторы
+            result_df['trix'] = talib.TRIX(close, timeperiod=14)
+            result_df['dx'] = talib.DX(high, low, close, timeperiod=14)
+            result_df['aroon_up'], result_df['aroon_down'] = talib.AROON(high, low, timeperiod=14)
+            result_df['aroon_osc'] = result_df['aroon_up'] - result_df['aroon_down']
+            
+            # Продвинутые объемные индикаторы
+            result_df['mfi'] = talib.MFI(high, low, close, volume, timeperiod=14)
+            result_df['chaikin_osc'] = talib.ADOSC(high, low, close, volume, fastperiod=3, slowperiod=10)
+            
+            # Волатильность и диапазоны
+            for period in [7, 14, 21]:
+                result_df[f'natr_{period}'] = talib.NATR(high, low, close, timeperiod=period)
+                result_df[f'volatility_{period}'] = pd.Series(close).pct_change().rolling(window=period).std()
+            
+            # Кастомные комбинированные индикаторы
+            result_df['price_volume_trend'] = ((close - np.roll(close, 1)) / np.roll(close, 1)) * volume
+            
+            # Ease of Movement (кастомная реализация, так как talib.EOM не существует)
+            distance_moved = ((high + low) / 2) - ((np.roll(high, 1) + np.roll(low, 1)) / 2)
+            box_height = (volume / 100000000) / (high - low)
+            eom_raw = distance_moved / box_height
+            result_df['ease_of_movement'] = pd.Series(eom_raw).rolling(window=14).mean().values
+            
+            # Статистические индикаторы
+            for period in [10, 20, 50]:
+                close_series = pd.Series(close)
+                result_df[f'zscore_{period}'] = (close_series - close_series.rolling(window=period).mean()) / close_series.rolling(window=period).std()
+                result_df[f'percentile_rank_{period}'] = close_series.rolling(window=period).rank(pct=True)
+            
+            # Фрактальные индикаторы
+            result_df['fractal_high'] = ((high > np.roll(high, 2)) & 
+                                       (high > np.roll(high, 1)) & 
+                                       (high > np.roll(high, -1)) & 
+                                       (high > np.roll(high, -2))).astype(int)
+            result_df['fractal_low'] = ((low < np.roll(low, 2)) & 
+                                      (low < np.roll(low, 1)) & 
+                                      (low < np.roll(low, -1)) & 
+                                      (low < np.roll(low, -2))).astype(int)
+            
+            # Дополнительные свечные паттерны
+            result_df['three_white_soldiers'] = talib.CDL3WHITESOLDIERS(open_price, high, low, close)
+            result_df['three_black_crows'] = talib.CDL3BLACKCROWS(open_price, high, low, close)
+            result_df['morning_star'] = talib.CDLMORNINGSTAR(open_price, high, low, close)
+            result_df['evening_star'] = talib.CDLEVENINGSTAR(open_price, high, low, close)
+            result_df['harami'] = talib.CDLHARAMI(open_price, high, low, close)
+            
+            # Индикаторы силы тренда
+            # Mass Index (кастомная реализация, так как talib.MASS не существует)
+            hl_range = high - low
+            ema9 = pd.Series(hl_range).ewm(span=9).mean()
+            ema9_of_ema9 = ema9.ewm(span=9).mean()
+            mass_index_raw = ema9 / ema9_of_ema9
+            result_df['mass_index'] = pd.Series(mass_index_raw).rolling(window=25).sum().values
+            # Vortex Indicator (кастомная реализация)
+            tr = np.maximum(high - low, np.maximum(np.abs(high - np.roll(close, 1)), np.abs(low - np.roll(close, 1))))
+            vm_pos = np.abs(high - np.roll(low, 1))
+            vm_neg = np.abs(low - np.roll(high, 1))
+            
+            vi_pos = pd.Series(vm_pos).rolling(window=14).sum() / pd.Series(tr).rolling(window=14).sum()
+            vi_neg = pd.Series(vm_neg).rolling(window=14).sum() / pd.Series(tr).rolling(window=14).sum()
+            
+            result_df['vortex_pos'] = vi_pos.values
+            result_df['vortex_neg'] = vi_neg.values
+            result_df['vortex_diff'] = vi_pos.values - vi_neg.values
+            
             # Fibonacci retracements
             rolling_high = pd.Series(high).rolling(window=50).max()
             rolling_low = pd.Series(low).rolling(window=50).min()
@@ -203,13 +288,97 @@ class AdvancedFeatureEngineering:
                 
             # Очистка данных
             result_df = result_df.replace([np.inf, -np.inf], np.nan)
-            result_df = result_df.fillna(method='ffill').fillna(method='bfill')
+            
+            # Улучшенный метод заполнения пропусков
+            result_df = result_df.interpolate(method='linear', limit_direction='both')
+            result_df = result_df.fillna(method='bfill').fillna(method='ffill')
+            
+            # Дополнительная очистка: заполняем оставшиеся NaN нулями
+            result_df = result_df.fillna(0)
+            
+            # Добавляем sentiment анализ
+            try:
+                sentiment_service = SentimentAnalysisService()
+                # Извлекаем символ из имени столбца, если он есть в данных
+                if hasattr(df, 'columns') and len(df.columns) > 0:
+                    # Пытаемся найти символ в метаданных или используем переданный параметр
+                    symbol_for_sentiment = getattr(df, 'symbol', symbol) if hasattr(df, 'symbol') else symbol
+                else:
+                    symbol_for_sentiment = symbol
+                
+                symbol_clean = symbol_for_sentiment.split('-')[0] if '-' in symbol_for_sentiment else symbol_for_sentiment
+                # Используем расширенные sentiment признаки
+                sentiment_features = sentiment_service.get_enhanced_sentiment_features(symbol_clean)
+                
+                # Добавляем sentiment признаки ко всем строкам
+                for feature_name, feature_value in sentiment_features.items():
+                    result_df[feature_name] = feature_value
+                
+                current_app.logger.info(f"📰 Добавлено {len(sentiment_features)} sentiment признаков")
+            except Exception as e:
+                current_app.logger.warning(f"Не удалось добавить sentiment признаки: {e}")
+            
+            # Добавляем макроэкономические индикаторы
+            try:
+                macro_service = MacroIndicatorsService()
+                symbol_clean = symbol_for_sentiment.split('-')[0] if '-' in symbol_for_sentiment else symbol_for_sentiment
+                macro_features = macro_service.get_enhanced_macro_features(symbol_clean)
+                
+                # Добавляем макро признаки ко всем строкам
+                for feature_name, feature_value in macro_features.items():
+                    result_df[feature_name] = feature_value
+                
+                current_app.logger.info(f"📊 Добавлено {len(macro_features)} макроэкономических признаков")
+            except Exception as e:
+                current_app.logger.warning(f"Не удалось добавить макроэкономические признаки: {e}")
+            
+            # Финальная проверка на NaN и бесконечные значения
+            result_df = result_df.replace([np.inf, -np.inf], 0)
             
             return result_df
             
         except Exception as e:
             current_app.logger.error(f"Ошибка при создании признаков: {e}")
             raise ValueError(f"Не удалось создать технические индикаторы: {e}")
+    
+    @staticmethod
+    def _calculate_vortex_indicator(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Рассчитывает Vortex Indicator (VI)
+        
+        Args:
+            high: Максимальные цены
+            low: Минимальные цены  
+            close: Цены закрытия
+            period: Период для расчета
+            
+        Returns:
+            Tuple: (VI+, VI-)
+        """
+        try:
+            # True Range
+            tr = np.maximum(high - low, 
+                           np.maximum(abs(high - np.roll(close, 1)), 
+                                    abs(low - np.roll(close, 1))))
+            
+            # Vortex Movement
+            vm_plus = abs(high - np.roll(low, 1))
+            vm_minus = abs(low - np.roll(high, 1))
+            
+            # Суммы за период
+            tr_sum = pd.Series(tr).rolling(window=period).sum()
+            vm_plus_sum = pd.Series(vm_plus).rolling(window=period).sum()
+            vm_minus_sum = pd.Series(vm_minus).rolling(window=period).sum()
+            
+            # Vortex Indicator
+            vi_plus = vm_plus_sum / tr_sum
+            vi_minus = vm_minus_sum / tr_sum
+            
+            return vi_plus.values, vi_minus.values
+            
+        except Exception:
+            # Возвращаем массивы нулей в случае ошибки
+            return np.zeros(len(high)), np.zeros(len(high))
 
 
 class EnsembleMLModel:
@@ -223,40 +392,103 @@ class EnsembleMLModel:
         self.scalers = {}
         self.feature_importance = {}
         self.is_trained = False
+        self.training_metrics = {}
+        
+        # Адаптивные веса на основе исторической производительности
+        self.weights = {'rf': 0.4, 'gb': 0.35, 'xgb': 0.25}
+        self.performance_history = {'rf': [], 'gb': [], 'xgb': []}
+        self.adaptive_weights_enabled = True
+        self.min_history_length = 5  # Минимум измерений для адаптации весов
+        
+        # Оптимизация гиперпараметров
+        self.hyperopt_service = None
+        self.use_optimized_params = True
         
     def _prepare_models(self):
-        """Инициализация моделей ensemble"""
-        # Random Forest - отличная базовая модель
-        self.models['rf'] = RandomForestRegressor(
-            n_estimators=200,
-            max_depth=15,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            n_jobs=-1
-        )
+        """Инициализация моделей ensemble с оптимизированными параметрами"""
+        # Инициализируем сервис оптимизации гиперпараметров
+        if self.hyperopt_service is None:
+            self.hyperopt_service = HyperparameterOptimizationService()
         
-        # Gradient Boosting - мощная модель для нелинейных зависимостей
-        self.models['gb'] = GradientBoostingRegressor(
-            n_estimators=200,
-            learning_rate=0.1,
-            max_depth=8,
-            min_samples_split=5,
-            random_state=42
-        )
+        # Random Forest - с улучшенной регуляризацией против переобучения
+        rf_params = {
+            'n_estimators': 200,      # Уменьшено для предотвращения переобучения
+            'max_depth': 12,          # Уменьшено для лучшей генерализации
+            'min_samples_split': 10,  # Увеличено для регуляризации
+            'min_samples_leaf': 5,    # Увеличено для стабильности
+            'max_features': 0.6,      # Ограничиваем количество признаков
+            'bootstrap': True,
+            'oob_score': True,        # Для дополнительной валидации
+            'random_state': 42,
+            'n_jobs': -1
+        }
         
-        # XGBoost если доступен
+        # Используем оптимизированные параметры если доступны
+        if self.use_optimized_params and 'rf' in self.hyperopt_service.best_params:
+            optimized_params = self.hyperopt_service.best_params['rf'].copy()
+            optimized_params.update({'random_state': 42, 'n_jobs': -1, 'oob_score': True})
+            self.models['rf'] = RandomForestRegressor(**optimized_params)
+            current_app.logger.info("🔧 Используем оптимизированные параметры для RF")
+        else:
+            self.models['rf'] = RandomForestRegressor(**rf_params)
+        
+        # Gradient Boosting - с сильной регуляризацией против переобучения
+        gb_params = {
+            'n_estimators': 150,      # Уменьшено для предотвращения переобучения
+            'learning_rate': 0.05,    # Значительно уменьшено
+            'max_depth': 4,           # Уменьшено для лучшей генерализации
+            'min_samples_split': 15,  # Увеличено для регуляризации
+            'min_samples_leaf': 8,    # Увеличено для стабильности
+            'subsample': 0.7,         # Увеличиваем стохастичность
+            'max_features': 0.5,      # Ограничиваем признаки
+            'validation_fraction': 0.2, # Увеличена валидация
+            'n_iter_no_change': 10,   # Ранняя остановка
+            'random_state': 42
+        }
+        
+        # Используем оптимизированные параметры если доступны
+        if self.use_optimized_params and 'gb' in self.hyperopt_service.best_params:
+            optimized_params = self.hyperopt_service.best_params['gb'].copy()
+            optimized_params.update({'random_state': 42})
+            self.models['gb'] = GradientBoostingRegressor(**optimized_params)
+            current_app.logger.info("🔧 Используем оптимизированные параметры для GB")
+        else:
+            self.models['gb'] = GradientBoostingRegressor(**gb_params)
+        
+        # XGBoost - с максимальной регуляризацией против переобучения
         if XGBOOST_AVAILABLE:
-            self.models['xgb'] = xgb.XGBRegressor(
-                n_estimators=200,
-                learning_rate=0.1,
-                max_depth=8,
-                min_child_weight=1,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                random_state=42,
-                n_jobs=-1
-            )
+            xgb_params = {
+                'n_estimators': 150,      # Уменьшено
+                'learning_rate': 0.03,    # Очень консервативная скорость
+                'max_depth': 4,           # Ограничиваем глубину
+                'min_child_weight': 6,    # Увеличено для регуляризации
+                'subsample': 0.7,         # Увеличиваем стохастичность
+                'colsample_bytree': 0.6,  # Меньше признаков
+                'colsample_bylevel': 0.8, # Дополнительная регуляризация
+                'reg_alpha': 0.5,         # Увеличена L1 регуляризация
+                'reg_lambda': 2.0,        # Увеличена L2 регуляризация
+                'gamma': 0.2,             # Увеличен минимальный gain
+                'objective': 'reg:squarederror',
+                'eval_metric': 'rmse',
+                'random_state': 42,
+                'n_jobs': -1,
+                'verbosity': 0
+            }
+            
+            # Используем оптимизированные параметры если доступны
+            if self.use_optimized_params and 'xgb' in self.hyperopt_service.best_params:
+                optimized_params = self.hyperopt_service.best_params['xgb'].copy()
+                optimized_params.update({
+                    'objective': 'reg:squarederror',
+                    'eval_metric': 'rmse',
+                    'random_state': 42,
+                    'n_jobs': -1,
+                    'verbosity': 0
+                })
+                self.models['xgb'] = xgb.XGBRegressor(**optimized_params)
+                current_app.logger.info("🔧 Используем оптимизированные параметры для XGB")
+            else:
+                self.models['xgb'] = xgb.XGBRegressor(**xgb_params)
             
         # Скалеры для каждой модели
         for model_name in self.models.keys():
@@ -305,6 +537,14 @@ class EnsembleMLModel:
                 training_time = time.time() - model_start
                 current_app.logger.info(f"   ⏱️  Обучение {model_name} завершено за {training_time:.2f}с")
                 
+                # Cross-validation для более надежной оценки
+                tscv = TimeSeriesSplit(n_splits=5)
+                X_full_scaled = self.scalers[model_name].transform(X)
+                cv_scores = cross_val_score(model, X_full_scaled, y, cv=tscv, scoring='neg_mean_absolute_error', n_jobs=-1)
+                cv_mae = -cv_scores.mean()
+                cv_std = cv_scores.std()
+                current_app.logger.info(f"   📊 Cross-validation MAE: {cv_mae:.2f} ± {cv_std:.2f}")
+                
                 # Предсказания
                 y_pred = model.predict(X_val_scaled)
                 predictions[model_name] = y_pred
@@ -321,7 +561,9 @@ class EnsembleMLModel:
                     'rmse': np.sqrt(mse),
                     'r2': r2,
                     'accuracy': accuracy,
-                    'training_time': training_time
+                    'training_time': training_time,
+                    'cv_mae': cv_mae,
+                    'cv_std': cv_std
                 }
                 
                 current_app.logger.info(f"   📈 {model_name.upper()} - Точность: {accuracy:.2f}%, R²: {r2:.3f}, MAE: {mae:.2f}")
@@ -366,6 +608,7 @@ class EnsembleMLModel:
         current_app.logger.info(f"✅ Обучение Ensemble модели завершено за {total_time:.2f}с")
         
         self.is_trained = True
+        self.training_metrics = metrics  # Сохраняем метрики
         return metrics
     
     def predict(self, X: pd.DataFrame) -> Tuple[float, float, Dict[str, Any]]:
@@ -381,55 +624,117 @@ class EnsembleMLModel:
         if not self.is_trained:
             raise ValueError("Модель не обучена")
             
-        predictions = {}
-        confidences = {}
+        individual_predictions = {}
         
         for model_name, model in self.models.items():
             try:
-                X_scaled = self.scalers[model_name].transform(X)
+                # Дополнительная очистка данных перед предсказанием
+                X_clean = X.fillna(0).replace([np.inf, -np.inf], 0)
+                X_scaled = self.scalers[model_name].transform(X_clean)
                 pred = model.predict(X_scaled)[0]
-                predictions[model_name] = pred
-                
-                # Оценка уверенности на основе feature importance
-                if model_name in self.feature_importance:
-                    top_features = sorted(
-                        self.feature_importance[model_name].items(),
-                        key=lambda x: x[1], reverse=True
-                    )[:10]
-                    confidence = sum(importance for _, importance in top_features)
-                    confidences[model_name] = confidence
-                else:
-                    confidences[model_name] = 0.5
-                    
+                individual_predictions[model_name] = pred
             except Exception as e:
-                current_app.logger.error(f"Ошибка предсказания модели {model_name}: {e}")
+                current_app.logger.warning(f"Не удалось получить предсказание от {model_name}: {e}")
                 continue
-        
-        if not predictions:
-            raise ValueError("Ни одна модель не смогла сделать предсказание")
-        
-        # Взвешенное среднее предсказаний
-        total_confidence = sum(confidences.values())
-        if total_confidence > 0:
-            ensemble_prediction = sum(
-                pred * (confidences[name] / total_confidence)
-                for name, pred in predictions.items()
-            )
-        else:
-            ensemble_prediction = np.mean(list(predictions.values()))
-        
-        # Оценка неопределенности
-        pred_std = np.std(list(predictions.values()))
-        
-        details = {
-            'individual_predictions': predictions,
-            'confidences': confidences,
-            'ensemble_prediction': ensemble_prediction,
-            'uncertainty': pred_std,
-            'models_used': list(predictions.keys())
+
+        if not individual_predictions:
+            raise ValueError("Ни одна модель не смогла сделать предсказание.")
+
+        # Взвешенное ансамблирование на основе R2
+        weights = {
+            name: self.training_metrics[name]['r2'] 
+            for name in individual_predictions.keys() 
+            if name in self.training_metrics and self.training_metrics[name]['r2'] > 0
         }
         
-        return ensemble_prediction, pred_std, details
+        if not weights:
+            # Если нет весов (например, все R2 < 0), используем простое среднее
+            final_prediction = np.mean(list(individual_predictions.values()))
+        else:
+            total_weight = sum(weights.values())
+            final_prediction = sum(
+                pred * (weights[name] / total_weight) 
+                for name, pred in individual_predictions.items() 
+                if name in weights
+            )
+
+        # Расчет неопределенности (стандартное отклонение предсказаний)
+        prediction_std = np.std(list(individual_predictions.values()))
+
+        details = {
+            'ensemble_prediction': final_prediction,
+            'prediction_std_dev': prediction_std,
+            'individual_predictions': individual_predictions,
+            'model_weights': weights
+        }
+
+        return final_prediction, prediction_std, details
+    
+    def optimize_hyperparameters(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        use_reduced_grid: bool = True,
+        cv_folds: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Оптимизировать гиперпараметры для всех моделей в ансамбле
+        """
+        current_app.logger.info("🔧 Начинаем оптимизацию гиперпараметров ансамбля")
+        
+        if self.hyperopt_service is None:
+            self.hyperopt_service = HyperparameterOptimizationService()
+        
+        optimization_results = self.hyperopt_service.optimize_ensemble_hyperparameters(
+            X_train=X_train,
+            y_train=y_train,
+            use_reduced_grid=use_reduced_grid,
+            cv_folds=cv_folds
+        )
+        
+        if optimization_results.get('optimized_models'):
+            current_app.logger.info("🔄 Обновляем модели с оптимизированными параметрами")
+            self.models.update(optimization_results['optimized_models'])
+            
+            for model_name in self.models.keys():
+                self.scalers[model_name] = RobustScaler()
+        
+        summary = optimization_results.get('optimization_summary', {})
+        for model_name, results in summary.items():
+            metrics = results.get('metrics', {})
+            if 'error' not in metrics:
+                current_app.logger.info(
+                    f"✅ {model_name.upper()}: CV MAE {metrics.get('best_cv_mae', 'N/A'):.2f}, "
+                    f"R² {metrics.get('train_r2', 'N/A'):.3f}"
+                )
+            else:
+                current_app.logger.warning(f"❌ {model_name.upper()}: {metrics['error']}")
+        
+        return optimization_results
+
+
+# Расширенный список поддерживаемых криптовалют
+SUPPORTED_CRYPTO_PAIRS = [
+    # Топ криптовалюты
+    'BTC-USD', 'ETH-USD', 'BNB-USD',
+    # DeFi токены
+    'UNI-USD', 'AAVE-USD', 'COMP-USD', 'MKR-USD', 'SUSHI-USD',
+    # Layer 1 блокчейны
+    'ADA-USD', 'SOL-USD', 'DOT-USD', 'AVAX-USD', 'ATOM-USD',
+    # Альткоины
+    'XRP-USD', 'LTC-USD', 'BCH-USD', 'ETC-USD', 'ZEC-USD',
+    # Новые перспективные
+    'MATIC-USD', 'LINK-USD', 'VET-USD', 'ALGO-USD', 'FTM-USD'
+]
+
+# Категории криптовалют для анализа
+CRYPTO_CATEGORIES = {
+    'major': ['BTC-USD', 'ETH-USD', 'BNB-USD'],
+    'defi': ['UNI-USD', 'AAVE-USD', 'COMP-USD', 'MKR-USD', 'SUSHI-USD'],
+    'layer1': ['ADA-USD', 'SOL-USD', 'DOT-USD', 'AVAX-USD', 'ATOM-USD'],
+    'altcoins': ['XRP-USD', 'LTC-USD', 'BCH-USD', 'ETC-USD', 'ZEC-USD'],
+    'emerging': ['MATIC-USD', 'LINK-USD', 'VET-USD', 'ALGO-USD', 'FTM-USD']
+}
 
 
 class AnalysisService:
@@ -437,15 +742,57 @@ class AnalysisService:
     Главный сервис для продвинутого анализа криптовалют
     с использованием ensemble машинного обучения
     """
-
+    
     def __init__(self):
         self.crypto_service = CryptoService()
         self.models_path = 'models/advanced_ml'
         self.feature_engineer = AdvancedFeatureEngineering()
-        self.ensemble_model = EnsembleMLModel()
+        self.model_cache_ttl = timedelta(hours=24)  # Время жизни кэша модели
+        self.supported_timeframes = ['1h', '4h', '1d', '1w']  # Поддерживаемые временные интервалы
         
         # Создаем директорию для моделей если не существует
         os.makedirs(self.models_path, exist_ok=True)
+
+    def _get_model_path(self, symbol: str, timeframe: str) -> str:
+        """Генерирует путь к файлу модели."""
+        filename = f"ensemble_model_{symbol.replace('-', '_')}_{timeframe}.joblib"
+        return os.path.join(self.models_path, filename)
+
+    def _save_model(self, model: EnsembleMLModel, symbol: str, timeframe: str):
+        """Сохраняет обученную модель в файл."""
+        model_path = self._get_model_path(symbol, timeframe)
+        try:
+            joblib.dump(model, model_path)
+            current_app.logger.info(f"💾 Модель сохранена в {model_path}")
+        except Exception as e:
+            current_app.logger.error(f"❌ Не удалось сохранить модель в {model_path}: {e}")
+
+    def _load_model(self, symbol: str, timeframe: str) -> Optional[EnsembleMLModel]:
+        """Загружает модель из файла, если она не устарела."""
+        model_path = self._get_model_path(symbol, timeframe)
+        if not os.path.exists(model_path):
+            return None
+
+        try:
+            model_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(model_path))
+            if model_age > self.model_cache_ttl:
+                current_app.logger.info(f"Модель {model_path} устарела ({model_age}). Требуется переобучение.")
+                return None
+
+            start_time = time.time()
+            model = joblib.load(model_path)
+            load_time = time.time() - start_time
+            
+            # Проверяем совместимость модели с текущими доступными библиотеками
+            if hasattr(model, 'models') and 'xgb' in model.models and not XGBOOST_AVAILABLE:
+                current_app.logger.warning("Кэшированная модель содержит XGBoost, но библиотека недоступна. Пересоздаем модель.")
+                return None
+            
+            current_app.logger.info(f"✅ Модель успешно загружена из {model_path} за {load_time:.2f}с")
+            return model
+        except Exception as e:
+            current_app.logger.error(f"❌ Не удалось загрузить модель из {model_path}: {e}")
+            return None
 
     def _get_historical_data(self, symbol: str, timeframe: str, extended: bool = True) -> pd.DataFrame:
         """
@@ -460,10 +807,17 @@ class AnalysisService:
             DataFrame с OHLCV данными и временным индексом
         """
         # Увеличенные периоды для качественного ML анализа
-        if extended:
-            days_map = {'1d': 365, '4h': 90, '1h': 30}  # Год данных для дневного анализа
+        # Специальная обработка для BNB-USD - увеличиваем объем данных
+        if 'BNB' in symbol.upper():
+            if extended:
+                days_map = {'1d': 730, '4h': 180, '1h': 60}  # 2 года данных для BNB
+            else:
+                days_map = {'1d': 365, '4h': 60, '1h': 30}
         else:
-            days_map = {'1d': 180, '4h': 30, '1h': 14}
+            if extended:
+                days_map = {'1d': 365, '4h': 90, '1h': 30}  # Год данных для дневного анализа
+            else:
+                days_map = {'1d': 180, '4h': 30, '1h': 14}
             
         days = days_map.get(timeframe, 365)
         
@@ -497,116 +851,92 @@ class AnalysisService:
             Словарь с результатами анализа, предсказаниями и рекомендациями
         """
         try:
-            current_app.logger.info(f"🚀 Начинаем продвинутый ML анализ для {symbol} на {timeframe}")
-            current_app.logger.info("=" * 60)
-            
-            # Получаем исторические данные
-            current_app.logger.info(f"📊 Загрузка исторических данных для {symbol}...")
-            df_raw = self._get_historical_data(symbol, timeframe, extended=True)
-            current_app.logger.info(f"✅ Получено {len(df_raw)} точек данных")
-            current_app.logger.info(f"📈 Диапазон цен: {df_raw['close'].min():.2f} - {df_raw['close'].max():.2f}")
-            
-            # Создаем продвинутые признаки
-            current_app.logger.info(f"🔧 Создание продвинутых признаков...")
-            df_features = self.feature_engineer.create_advanced_features(df_raw.copy())
-            current_app.logger.info(f"✅ Создано {len(df_features.columns)} признаков")
-            
-            # Анализируем качество данных
-            nan_count = df_features.isna().sum().sum()
-            current_app.logger.info(f"📊 Статистика данных: NaN значений: {nan_count}")
-            
-            if len(df_features) < 200:
-                raise ValueError(f"Недостаточно данных после создания признаков: {len(df_features)} (нужно минимум 200)")
-            
-            # Подготавливаем данные для обучения
-            feature_columns = [col for col in df_features.columns 
-                             if col not in ['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-            
-            # Удаляем колонки с NaN или константными значениями
-            valid_features = []
-            for col in feature_columns:
-                if not df_features[col].isna().all() and df_features[col].std() > 1e-8:
-                    valid_features.append(col)
-            
-            current_app.logger.info(f"✅ Отобрано {len(valid_features)} валидных признаков из {len(feature_columns)}")
-            current_app.logger.info(f"🎯 Процент валидных признаков: {len(valid_features)/len(feature_columns)*100:.1f}%")
-            
-            if len(valid_features) < 10:
-                raise ValueError("Слишком мало валидных признаков для обучения")
-            
-            # Подготавливаем X и y
-            X = df_features[valid_features].fillna(method='ffill').fillna(method='bfill')
-            y = df_features['close'].shift(-1).fillna(method='ffill')  # Предсказываем следующую цену
-            
-            # Удаляем последнюю строку (нет целевого значения)
-            X = X.iloc[:-1]
-            y = y.iloc[:-1]
-            
-            # Обучаем ensemble модель
-            current_app.logger.info("🤖 Начинаем обучение ensemble модели...")
-            current_app.logger.info("-" * 40)
-            training_metrics = self.ensemble_model.train(X, y)
-            current_app.logger.info("-" * 40)
-            current_app.logger.info("✅ Обучение ensemble модели завершено!")
-            
-            # Делаем предсказание для последней точки
-            last_features = X.iloc[-1:].copy()
-            predicted_price, uncertainty, prediction_details = self.ensemble_model.predict(last_features)
-            
-            # Вычисляем доверительный интервал
-            confidence_interval = [
-                predicted_price - 1.96 * uncertainty,
-                predicted_price + 1.96 * uncertainty
-            ]
-            
-            # Генерируем объяснение и рекомендацию
-            explanation, recommendation = self._generate_advanced_insights(
-                df_features.iloc[-1], 
-                prediction_details,
-                training_metrics
-            )
-            
-            # Вычисляем точность модели
-            best_model_accuracy = max([
-                metrics.get('accuracy', 0) 
-                for metrics in training_metrics.values() 
-                if isinstance(metrics, dict)
-            ])
-            
-            current_app.logger.info("=" * 60)
-            current_app.logger.info(f"🎯 АНАЛИЗ ЗАВЕРШЕН УСПЕШНО!")
-            current_app.logger.info(f"📊 Лучшая точность модели: {best_model_accuracy:.2f}%")
-            current_app.logger.info(f"💰 Предсказанная цена: {predicted_price:.2f}")
-            current_app.logger.info(f"📈 Рекомендация: {recommendation}")
-            current_app.logger.info("=" * 60)
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'timeframe': timeframe,
-                'historical_data': df_raw.tail(50).to_dict('records'),  # Последние 50 точек для графика
-                'predicted_price': float(predicted_price),
-                'confidence_interval': [float(ci) for ci in confidence_interval],
-                'uncertainty': float(uncertainty),
-                'recommendation': recommendation,
-                'explanation': explanation,
-                'model_accuracy': float(best_model_accuracy),
-                'training_metrics': training_metrics,
-                'prediction_details': prediction_details,
-                'features_used': len(valid_features),
-                'data_points': len(df_raw)
-            }
-            
-        except Exception as e:
-            current_app.logger.error(f"Ошибка продвинутого ML анализа для {symbol}: {e}")
-            return {
-                'success': False, 
-                'error': str(e),
-                'symbol': symbol,
-                'timeframe': timeframe
-            }
+            current_app.logger.info(f"🚀 Запуск ML анализа для {symbol} ({timeframe})")
+            start_total_time = time.time()
 
-    def _generate_advanced_insights(self, last_row: pd.Series, prediction_details: Dict, training_metrics: Dict) -> Tuple[Dict[str, str], str]:
+            # Шаг 1: Попытка загрузить кэшированную модель
+            ensemble_model = self._load_model(symbol, timeframe)
+            training_metrics = None
+
+            try:
+                # Шаг 2: Получение и подготовка данных
+                df = self._get_historical_data(symbol, timeframe)
+                df_features = self.feature_engineer.create_advanced_features(df, symbol)
+                
+                # Определение признаков (X) и цели (y)
+                features = [col for col in df_features.columns if col not in ['open', 'high', 'low', 'close', 'volume', 'timestamp', 'target']]
+                df_features['target'] = df_features['close'].shift(-1)
+                df_features = df_features.dropna(subset=['target'])
+                
+                X = df_features[features]
+                y = df_features['target']
+
+                # Шаг 3: Обучение модели, если не загружена из кэша
+                if not ensemble_model:
+                    current_app.logger.info("Кэшированная модель не найдена или устарела. Начинаем обучение новой модели.")
+                    ensemble_model = EnsembleMLModel()
+                    training_metrics = ensemble_model.train(X.iloc[:-1], y.iloc[:-1])
+                    self._save_model(ensemble_model, symbol, timeframe)
+                else:
+                    training_metrics = ensemble_model.training_metrics
+                    current_app.logger.info("Используется кэшированная модель.")
+
+                # Шаг 4: Проверка совместимости признаков и предсказание
+                last_X = X.tail(1)
+                
+                # Проверяем совместимость признаков с моделью
+                try:
+                    predicted_price, std_dev, prediction_details = ensemble_model.predict(last_X)
+                except Exception as model_error:
+                    if "feature names" in str(model_error).lower() or "unseen at fit time" in str(model_error).lower():
+                        current_app.logger.warning(f"🔄 Обнаружено несоответствие признаков для {symbol}. Переобучение модели...")
+                        
+                        # Переобучаем модель с новыми признаками
+                        ensemble_model = EnsembleMLModel()
+                        training_metrics = ensemble_model.train(X, y)
+                        
+                        # Сохраняем обновленную модель
+                        self._save_model(ensemble_model, symbol, timeframe)
+                        current_app.logger.info(f"💾 Модель {symbol} переобучена и сохранена с новыми признаками")
+                        
+                        # Повторяем предсказание с новой моделью
+                        predicted_price, std_dev, prediction_details = ensemble_model.predict(last_X)
+                    else:
+                        raise model_error
+                
+                # Шаг 5: Генерация инсайтов и рекомендаций
+                last_row = df_features.tail(1).iloc[0]
+                insights, recommendation = self._generate_advanced_insights(last_row, prediction_details, training_metrics)
+
+                total_time = time.time() - start_total_time
+                current_app.logger.info(f"✅ Анализ для {symbol} завершен за {total_time:.2f}с")
+
+                return {
+                    'status': 'success',
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'current_price': last_row['close'],
+                    'predicted_price': predicted_price,
+                    'prediction_std_dev': std_dev,
+                    'recommendation': recommendation,
+                    'confidence': prediction_details.get('ensemble_confidence', 0),
+                    'insights': insights,
+                    'training_metrics': training_metrics,
+                    'prediction_details': prediction_details,
+                    'total_analysis_time': total_time
+                }
+
+            except ValueError as ve:
+                current_app.logger.error(f"Ошибка валидации данных для {symbol}: {ve}")
+                return {'status': 'error', 'message': str(ve)}
+            except Exception as e:
+                current_app.logger.error(f"Критическая ошибка в advanced_ml_analysis для {symbol}: {e}", exc_info=True)
+                return {'status': 'error', 'message': f"Внутренняя ошибка сервера при анализе {symbol}."}
+        except Exception as e:
+            current_app.logger.error(f"Критическая ошибка в advanced_ml_analysis для {symbol}: {e}", exc_info=True)
+            return {'status': 'error', 'message': f"Внутренняя ошибка сервера при анализе {symbol}."}
+
+    def _generate_advanced_insights(self, last_row: pd.Series, prediction_details: Dict, training_metrics: Dict):
         """
         Генерирует продвинутые инсайты на основе ML анализа и технических индикаторов
         
@@ -752,12 +1082,12 @@ class AnalysisService:
             for symbol in symbols[:5]:  # Ограничиваем до 5 символов
                 try:
                     analysis = self.advanced_ml_analysis(symbol, timeframe)
-                    if analysis['success']:
+                    if analysis['status'] == 'success':
                         results[symbol] = {
                             'predicted_price': analysis['predicted_price'],
-                            'accuracy': analysis['model_accuracy'],
+                            'accuracy': analysis['training_metrics']['ensemble']['accuracy'],
                             'recommendation': analysis['recommendation'],
-                            'current_price': analysis['historical_data'][-1]['close'] if analysis['historical_data'] else 0
+                            'current_price': analysis['current_price']
                         }
                 except Exception as e:
                     current_app.logger.error(f"Ошибка анализа {symbol}: {e}")
@@ -778,7 +1108,7 @@ class AnalysisService:
                 )
             
             return {
-                'success': True,
+                'status': 'success',
                 'comparison_results': dict(sorted_results),
                 'summary_data': [
                     {
@@ -794,7 +1124,7 @@ class AnalysisService:
             
         except Exception as e:
             current_app.logger.error(f"Ошибка сравнения криптовалют: {e}")
-            return {'success': False, 'error': str(e)}
+            return {'status': 'error', 'message': str(e)}
     
     def _create_comparison_plot(self, results: Dict) -> str:
         """Создает HTML график для сравнения криптовалют"""
@@ -812,3 +1142,331 @@ class AnalysisService:
             
         except Exception as e:
             return f"<div class='alert alert-warning'>Ошибка создания графика: {e}</div>"
+    
+    def multi_timeframe_analysis(self, symbol: str, timeframes: List[str] = None) -> Dict[str, Any]:
+        """
+        Выполняет анализ на нескольких временных интервалах для более точного прогноза
+        
+        Args:
+            symbol: Символ криптовалюты (например, 'BTC-USD')
+            timeframes: Список временных интервалов для анализа
+            
+        Returns:
+            Словарь с результатами анализа по каждому временному интервалу
+        """
+        if timeframes is None:
+            timeframes = ['1h', '4h', '1d']  # По умолчанию анализируем 3 интервала
+        
+        # Фильтруем только поддерживаемые временные интервалы
+        valid_timeframes = [tf for tf in timeframes if tf in self.supported_timeframes]
+        
+        if not valid_timeframes:
+            raise ValueError(f"Нет поддерживаемых временных интервалов. Доступны: {self.supported_timeframes}")
+        
+        current_app.logger.info(f"🕐 Запуск multi-timeframe анализа для {symbol} на интервалах: {valid_timeframes}")
+        
+        results = {}
+        predictions = []
+        confidences = []
+        
+        for timeframe in valid_timeframes:
+            try:
+                current_app.logger.info(f"📊 Анализ {symbol} на интервале {timeframe}")
+                
+                # Выполняем анализ для каждого временного интервала
+                result = self.advanced_ml_analysis(symbol, timeframe)
+                
+                if result.get('status') == 'success':
+                    results[timeframe] = result
+                    
+                    # Собираем предсказания для комбинирования
+                    if 'predicted_price' in result:
+                        predictions.append({
+                            'timeframe': timeframe,
+                            'price': result['predicted_price'],
+                            'confidence': result.get('confidence', 0.5),
+                            'accuracy': self._get_timeframe_weight(timeframe)
+                        })
+                        confidences.append(result.get('confidence', 0.5))
+                
+                current_app.logger.info(f"✅ Анализ {timeframe} завершен")
+                
+            except Exception as e:
+                current_app.logger.error(f"❌ Ошибка анализа {timeframe}: {e}")
+                results[timeframe] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+        
+        # Комбинируем результаты разных временных интервалов
+        combined_result = self._combine_timeframe_results(results, predictions)
+        
+        current_app.logger.info(f"🎯 Multi-timeframe анализ завершен. Комбинированный прогноз: ${combined_result.get('combined_price', 'N/A')}")
+        
+        return {
+            'status': 'success',
+            'symbol': symbol,
+            'timeframes_analyzed': valid_timeframes,
+            'individual_results': results,
+            'combined_prediction': combined_result,
+            'analysis_timestamp': datetime.now().isoformat()
+        }
+    
+    def _get_timeframe_weight(self, timeframe: str) -> float:
+        """
+        Возвращает вес для временного интервала при комбинировании результатов
+        Более длинные интервалы имеют больший вес для долгосрочных трендов
+        """
+        weights = {
+            '1h': 0.2,   # Краткосрочный шум
+            '4h': 0.3,   # Среднесрочные движения
+            '1d': 0.4,   # Основной тренд
+            '1w': 0.5    # Долгосрочный тренд
+        }
+        return weights.get(timeframe, 0.25)
+    
+    def _combine_timeframe_results(self, results: Dict, predictions: List[Dict]) -> Dict[str, Any]:
+        """
+        Комбинирует результаты анализа с разных временных интервалов
+        """
+        if not predictions:
+            return {'error': 'Нет успешных предсказаний для комбинирования'}
+        
+        # Взвешенное среднее предсказаний
+        total_weight = 0
+        weighted_price_sum = 0
+        weighted_confidence_sum = 0
+        
+        for pred in predictions:
+            weight = pred['accuracy'] * pred['confidence']
+            weighted_price_sum += pred['price'] * weight
+            weighted_confidence_sum += pred['confidence'] * weight
+            total_weight += weight
+        
+        if total_weight == 0:
+            return {'error': 'Нулевой общий вес предсказаний'}
+        
+        combined_price = weighted_price_sum / total_weight
+        combined_confidence = weighted_confidence_sum / total_weight
+        
+        # Анализ согласованности предсказаний
+        prices = [pred['price'] for pred in predictions]
+        price_std = np.std(prices)
+        price_range = max(prices) - min(prices)
+        
+        # Определяем уровень согласованности
+        consistency_score = 1.0 - min(price_range / combined_price, 1.0)
+        
+        # Генерируем рекомендацию на основе комбинированного анализа
+        recommendation = self._generate_multi_timeframe_recommendation(
+            predictions, combined_confidence, consistency_score
+        )
+        
+        return {
+            'combined_price': combined_price,
+            'combined_confidence': combined_confidence,
+            'consistency_score': consistency_score,
+            'price_range': price_range,
+            'price_std': price_std,
+            'recommendation': recommendation,
+            'timeframe_count': len(predictions)
+        }
+    
+    def _generate_multi_timeframe_recommendation(self, predictions: List[Dict], 
+                                               combined_confidence: float, 
+                                               consistency_score: float) -> str:
+        """
+        Генерирует рекомендацию на основе multi-timeframe анализа
+        """
+        if combined_confidence < 0.3:
+            return "ОСТОРОЖНО: Низкая уверенность в прогнозе"
+        
+        if consistency_score < 0.5:
+            return "ВНИМАНИЕ: Противоречивые сигналы на разных временных интервалах"
+        
+        # Анализируем направление движения на разных интервалах
+        short_term = [p for p in predictions if p['timeframe'] in ['1h', '4h']]
+        long_term = [p for p in predictions if p['timeframe'] in ['1d', '1w']]
+        
+        if short_term and long_term:
+            short_avg = np.mean([p['price'] for p in short_term])
+            long_avg = np.mean([p['price'] for p in long_term])
+            
+            if abs(short_avg - long_avg) / long_avg > 0.05:  # Расхождение более 5%
+                if short_avg > long_avg:
+                    return "ПОКУПКА: Краткосрочный импульс вверх при долгосрочном тренде"
+                else:
+                    return "ПРОДАЖА: Краткосрочная коррекция в долгосрочном тренде"
+        
+        if combined_confidence > 0.7 and consistency_score > 0.8:
+            return "СИЛЬНЫЙ СИГНАЛ: Высокая согласованность на всех временных интервалах"
+        elif combined_confidence > 0.5 and consistency_score > 0.6:
+            return "УМЕРЕННЫЙ СИГНАЛ: Хорошая согласованность прогнозов"
+        else:
+            return "НЕЙТРАЛЬНО: Смешанные сигналы, требуется дополнительный анализ"
+    
+    def optimize_hyperparameters(
+        self, 
+        symbol: str,
+        timeframe: str = '1d',
+        use_reduced_grid: bool = True,
+        cv_folds: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Оптимизировать гиперпараметры для модели конкретной криптовалюты
+        
+        Args:
+            symbol: Торговая пара (например, 'BTC-USD')
+            timeframe: Временной интервал
+            use_reduced_grid: Использовать уменьшенную сетку параметров
+            cv_folds: Количество фолдов для кросс-валидации
+            
+        Returns:
+            Словарь с результатами оптимизации
+        """
+        current_app.logger.info(f"🔧 Начинаем оптимизацию гиперпараметров для {symbol}")
+        
+        # Получаем исторические данные
+        df = self._get_historical_data(symbol, timeframe, extended=True)
+        if df.empty:
+            raise ValueError(f"Не удалось получить данные для {symbol}")
+        
+        # Создаем признаки
+        df_features = AdvancedFeatureEngineering.create_advanced_features(df, symbol)
+        
+        # Подготавливаем данные для обучения
+        X = df_features.drop(['target'], axis=1, errors='ignore')
+        y = df_features['close'].shift(-1).dropna()  # Предсказываем следующую цену
+        X = X.iloc[:-1]  # Убираем последнюю строку из X
+        
+        # Создаем модель
+        model = EnsembleMLModel()
+        
+        # Выполняем оптимизацию
+        optimization_results = model.optimize_hyperparameters(
+            X_train=X,
+            y_train=y,
+            use_reduced_grid=use_reduced_grid,
+            cv_folds=cv_folds
+        )
+        
+        # Сохраняем результаты оптимизации
+        optimization_path = f"models/advanced_ml/hyperopt_results_{symbol.replace('-', '_')}_{timeframe}.joblib"
+        os.makedirs(os.path.dirname(optimization_path), exist_ok=True)
+        model.hyperopt_service.save_optimization_results(optimization_path)
+        
+        current_app.logger.info(f"✅ Оптимизация гиперпараметров для {symbol} завершена")
+        
+        return optimization_results
+    
+    def get_supported_crypto_pairs(self) -> List[str]:
+        """
+        Получить список поддерживаемых криптовалютных пар
+        """
+        return SUPPORTED_CRYPTO_PAIRS.copy()
+    
+    def get_crypto_categories(self) -> Dict[str, List[str]]:
+        """
+        Получить категории криптовалют
+        """
+        return CRYPTO_CATEGORIES.copy()
+    
+    def analyze_crypto_category(
+        self, 
+        category: str, 
+        timeframe: str = '1d',
+        limit: int = None
+    ) -> Dict[str, Any]:
+        """
+        Анализировать всю категорию криптовалют
+        
+        Args:
+            category: Категория криптовалют ('major', 'defi', 'layer1', 'altcoins', 'emerging')
+            timeframe: Временной интервал
+            limit: Ограничение количества анализируемых пар
+            
+        Returns:
+            Словарь с результатами анализа по каждой паре
+        """
+        if category not in CRYPTO_CATEGORIES:
+            raise ValueError(f"Неподдерживаемая категория: {category}")
+        
+        pairs = CRYPTO_CATEGORIES[category]
+        if limit:
+            pairs = pairs[:limit]
+        
+        current_app.logger.info(f"🔍 Анализируем категорию {category}: {len(pairs)} пар")
+        
+        results = {}
+        successful_analyses = 0
+        
+        for pair in pairs:
+            try:
+                current_app.logger.info(f"📊 Анализируем {pair}...")
+                result = self.advanced_ml_analysis(pair, timeframe)
+                results[pair] = result
+                successful_analyses += 1
+                
+                # Небольшая пауза между анализами
+                import time
+                time.sleep(1)
+                
+            except Exception as e:
+                current_app.logger.warning(f"⚠️ Не удалось проанализировать {pair}: {e}")
+                results[pair] = {'error': str(e)}
+        
+        current_app.logger.info(f"✅ Анализ категории {category} завершен: {successful_analyses}/{len(pairs)} успешно")
+        
+        return {
+            'category': category,
+            'total_pairs': len(pairs),
+            'successful_analyses': successful_analyses,
+            'results': results,
+            'summary': self._generate_category_summary(results)
+        }
+    
+    def _generate_category_summary(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Генерировать сводку по категории криптовалют
+        """
+        successful_results = {k: v for k, v in results.items() if 'error' not in v}
+        
+        if not successful_results:
+            return {'message': 'Нет успешных анализов для генерации сводки'}
+        
+        # Собираем статистику
+        predictions = []
+        confidences = []
+        price_changes = []
+        
+        for pair, result in successful_results.items():
+            if 'predicted_price' in result and 'current_price' in result:
+                current_price = result['current_price']
+                predicted_price = result['predicted_price']
+                
+                if current_price > 0:
+                    change_percent = ((predicted_price - current_price) / current_price) * 100
+                    price_changes.append(change_percent)
+                    predictions.append(predicted_price)
+                
+                if 'confidence' in result:
+                    confidences.append(result['confidence'])
+        
+        summary = {
+            'successful_pairs': len(successful_results),
+            'average_confidence': np.mean(confidences) if confidences else 0,
+            'average_price_change': np.mean(price_changes) if price_changes else 0,
+            'bullish_pairs': len([c for c in price_changes if c > 0]) if price_changes else 0,
+            'bearish_pairs': len([c for c in price_changes if c < 0]) if price_changes else 0,
+            'neutral_pairs': len([c for c in price_changes if abs(c) < 1]) if price_changes else 0
+        }
+        
+        # Определяем общий тренд категории
+        if summary['average_price_change'] > 2:
+            summary['category_trend'] = 'БЫЧИЙ'
+        elif summary['average_price_change'] < -2:
+            summary['category_trend'] = 'МЕДВЕЖИЙ'
+        else:
+            summary['category_trend'] = 'НЕЙТРАЛЬНЫЙ'
+        
+        return summary

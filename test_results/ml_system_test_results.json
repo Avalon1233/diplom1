@@ -1,0 +1,40 @@
+{
+  "dependencies": {
+    "status": "SUCCESS",
+    "optional_libraries": {
+      "PyTorch": "2.8.0+cpu"
+    }
+  },
+  "feature_engineering": {
+    "status": "SUCCESS",
+    "total_features": 98,
+    "valid_features": 92,
+    "nan_features": 0,
+    "constant_features": 1
+  },
+  "ensemble_model": {
+    "status": "SUCCESS",
+    "training_time": 10.45760726928711,
+    "best_accuracy": 99.97878366122328,
+    "models_trained": 2,
+    "training_metrics": {
+      "rf": {
+        "mae": 12.168519628833238,
+        "mse": 203.15558288432777,
+        "rmse": 14.253265691915232,
+        "r2": -1.9852919062571344,
+        "accuracy": 99.97570697545505,
+        "training_time": 1.3679583072662354
+      },
+      "gb": {
+        "mae": 10.627389536398587,
+        "mse": 164.65852619074684,
+        "rmse": 12.83193384454373,
+        "r2": -1.4195927010942375,
+        "accuracy": 99.97878366122328,
+        "training_time": 8.761395692825317
+      }
+    },
+    "predictions_tested": 5
+  }
+}

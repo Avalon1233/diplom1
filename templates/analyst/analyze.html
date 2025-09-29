@@ -21,8 +21,31 @@
         <div class="card-body">
             <div id="analyze-form">
                 <div class="row align-items-end">
-                    <div class="col-md-4 mb-3">{{ form.symbol.label }}{{ form.symbol(class="form-select", id="symbol") }}</div>
-                    <div class="col-md-4 mb-3">{{ form.timeframe.label }}{{ form.timeframe(class="form-select", id="timeframe") }}</div>
+                    <div class="col-md-4 mb-3">
+                        <label for="symbol" class="form-label">Криптовалюта</label>
+                        <select class="form-select" id="symbol" name="symbol">
+                            <option value="BTC-USD">Bitcoin (BTC)</option>
+                            <option value="ETH-USD">Ethereum (ETH)</option>
+                            <option value="BNB-USD">Binance Coin (BNB)</option>
+                            <option value="ADA-USD">Cardano (ADA)</option>
+                            <option value="SOL-USD">Solana (SOL)</option>
+                            <option value="AVAX-USD">Avalanche (AVAX)</option>
+                            <option value="DOT-USD">Polkadot (DOT)</option>
+                            <option value="LINK-USD">Chainlink (LINK)</option>
+                            <option value="UNI-USD">Uniswap (UNI)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="timeframe" class="form-label">Временной период</label>
+                        <select class="form-select" id="timeframe" name="timeframe">
+                            <option value="1d">1 день</option>
+                            <option value="1w">1 неделя</option>
+                            <option value="1m">1 месяц</option>
+                            <option value="3m">3 месяца</option>
+                            <option value="6m">6 месяцев</option>
+                            <option value="1y">1 год</option>
+                        </select>
+                    </div>
                     <div class="col-md-4 mb-3 d-grid"><button class="btn btn-primary" id="analyzeBtn" type="button">Анализировать</button></div>
                 </div>
             </div>
@@ -202,13 +225,21 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-<script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script nonce="{{ csp_nonce() }}">
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Страница анализа загружена');
+    
     const analyzeBtn = document.getElementById('analyzeBtn');
-    if (!analyzeBtn) return;
+    console.log('🔍 Кнопка анализа найдена:', analyzeBtn);
+    
+    if (!analyzeBtn) {
+        console.error('❌ Кнопка анализа не найдена!');
+        return;
+    }
 
     analyzeBtn.addEventListener('click', async function() {
+        console.log('🎯 Кнопка анализа нажата!');
         // Reset UI
         document.getElementById('flash-messages').innerHTML = '';
         document.getElementById('results-area').style.display = 'none';

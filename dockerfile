@@ -1,12 +1,12 @@
 # Multi-stage build for production optimization
 FROM node:18-alpine AS frontend-builder
 
-# Set working directory for frontend buildв
+# Set working directory for frontend build
 WORKDIR /app/frontend
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production --silent
+RUN npm ci --silent
 
 # Copy source files and build
 COPY src/ ./src/

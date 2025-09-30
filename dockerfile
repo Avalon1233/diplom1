@@ -1,7 +1,7 @@
 # Multi-stage build for production optimization
 FROM node:18-alpine AS frontend-builder
 
-# Set working directory for frontend build
+# Set working directory for frontend buildв
 WORKDIR /app/frontend
 
 # Copy package files and install dependencies

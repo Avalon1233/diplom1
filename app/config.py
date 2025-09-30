@@ -13,11 +13,16 @@ class Config:
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = 3600
 
-    # Database
+    # Database - Default to PostgreSQL for production readiness
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'DATABASE_URL') or 'sqlite:///app.db'
+        'DATABASE_URL') or 'postgresql://postgres:password@localhost:5432/crypto_platform'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {}
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'pool_timeout': 20,
+        'max_overflow': 0
+    }
 
     # Redis & Caching - Default to NullCache to avoid dependency issues
     REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
@@ -67,8 +72,26 @@ class Config:
         """Initialize configuration-dependent settings."""
         db_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
         if 'sqlite' in db_url.lower():
-            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
+            # SQLite specific settings
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'pool_pre_ping': True,
+                'connect_args': {'check_same_thread': False}
+            }
+        elif 'postgresql' in db_url.lower():
+            # PostgreSQL specific settings
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'pool_pre_ping': True,
+                'pool_recycle': 300,
+                'pool_timeout': 20,
+                'max_overflow': 10,
+                'pool_size': 5,
+                'connect_args': {
+                    'connect_timeout': 10,
+                    'application_name': 'crypto_platform'
+                }
+            }
         else:
+            # Default database settings
             app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
                 'pool_pre_ping': True,
                 'pool_recycle': 300,
@@ -91,6 +114,10 @@ class DevelopmentConfig(Config):
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'rpc://'
     RATELIMIT_STORAGE_URL = 'memory://'
+    
+    # Development can use either SQLite or PostgreSQL
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+        'postgresql://postgres:password@localhost:5432/crypto_platform_dev'
 
 
 class TestingConfig(Config):

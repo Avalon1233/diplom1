@@ -51,6 +51,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     tzdata \
+    bash \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
